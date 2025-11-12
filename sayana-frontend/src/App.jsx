@@ -925,7 +925,10 @@ const CloseIcon = ({ className }) => (
 );
 
 const SendIcon = ({ className }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+  // right-facing paper plane / send icon (points to the right)
+  <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+    <path d="M2 21l20-9L2 3v7l13 2-13 2v7z" />
+  </svg>
 );
 
 const ChevronDownIcon = ({ className }) => (
@@ -2706,7 +2709,7 @@ const Chatbot = () => {
           >
             {/* Header */}
             <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800">
-              <h3 className="text-xl font-bold text-white">Chat with Sayan</h3>
+              <h3 className="text-xl font-bold text-white">Chat with Sayana AI</h3>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-gray-400 hover:text-gray-200"
