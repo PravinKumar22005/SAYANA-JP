@@ -1,0 +1,15 @@
+# Node.js
+node_modules/
+.env
+.env.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VS Code settings
+.vscode/
+.DS_Store
+
+# Build folders
+dist/
+build/
