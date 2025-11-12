@@ -1,16 +1,808 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, Routes, Route } from 'react-router-dom';
 import Auth from './pages/Auth';
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { AfterimagePass } from "three/addons/postprocessing/AfterimagePass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { motion, AnimatePresence } from 'framer-motion';
 
-// --- SVG Icon Components ---
+// --- Global Styles Component (from Morphing Background) ---
+// Injects all the CSS from the original <style> tag into the document head
+const GlobalStyles = () => {
+    const css = `
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: "Inter", sans-serif;
+            overflow: hidden;
+            background: #040307;  
+            background-image:
+                radial-gradient(circle at 50% 35%, #1d1431 0%, transparent 65%),
+                linear-gradient(180deg, #000000 0%, #070012 100%);
+            color: #eee;
+        }
+        #container {
+            position: fixed;
+            inset: 0;
+            z-index: 0; /* Background layer */
+        }
+        .vignette {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9;
+            background: radial-gradient(circle at center, rgba(0,0,0,0) 65%, rgba(0,0,0,.5) 100%);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
 
-/**
- * Renders a feature icon based on type.
- */
+        /* --- NEW CSS FOR CARD STREAM --- */
+
+        .card-stream-section {
+            position: relative;
+            width: 100%;
+            height: 100vh; /* Give it a full viewport height to contain its elements */
+            overflow: hidden;
+            display: flex;
+            flex-direction: column; /* Stack header and stream vertically */
+            align-items: center;
+            justify-content: center; /* Center the whole block vertically */
+            padding: 2rem 0; /* Add some vertical padding */
+        }
+
+        /* REMOVED .controls, .control-btn, .control-btn:hover */
+
+        /* REMOVED .speed-indicator */
+
+        .card-stream-container {
+            position: relative;
+            width: 100vw;
+            /* height: 100vh; */ /* <-- REMOVED this, it was pushing the layout */
+            height: 400px; /* <-- ADDED fixed height for the stream area */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: -2rem; /* <-- ADDED to pull stream closer to header */
+        }
+
+        .card-stream {
+            position: absolute;
+            width: 100vw;
+            height: 180px;
+            display: flex;
+            align-items: center;
+            overflow: visible;
+        }
+
+        .card-line {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+            white-space: nowrap;
+            cursor: grab;
+            user-select: none;
+            will-change: transform;
+        }
+
+        .card-line:active {
+            cursor: grabbing;
+        }
+
+        .card-line.dragging {
+            cursor: grabbing;
+        }
+
+        .card-line.css-animated {
+            animation: scrollCards 40s linear infinite;
+        }
+
+        @keyframes scrollCards {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100vw);
+            }
+        }
+
+        .card-wrapper {
+            position: relative;
+            width: 400px;
+            height: 250px;
+            flex-shrink: 0;
+        }
+
+        .card {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 400px;
+            height: 250px;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        .card-normal {
+            background: transparent;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 0;
+            color: white;
+            z-index: 2;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+            filter: brightness(1.1) contrast(1.1);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-image:hover {
+            filter: brightness(1.2) contrast(1.2);
+        }
+
+        .card-ascii {
+            background: transparent;
+            z-index: 1;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 400px;
+            height: 250px;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        /* Removed .card-chip, .contactless, .card-number, .card-info, .card-logo as they weren't in the card-image HTML */
+
+        .ascii-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            color: rgba(220, 210, 255, 0.6);
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            line-height: 13px;
+            overflow: hidden;
+            white-space: pre;
+            clip-path: inset(0 calc(100% - var(--clip-left, 0%)) 0 0);
+            animation: glitch 0.1s infinite linear alternate-reverse;
+            margin: 0;
+            padding: 0;
+            text-align: left;
+            vertical-align: top;
+            box-sizing: border-box;
+            -webkit-mask-image: linear-gradient(
+                to right,
+                rgba(0, 0, 0, 1) 0%,
+                rgba(0, 0, 0, 0.8) 30%,
+                rgba(0, 0, 0, 0.6) 50%,
+                rgba(0, 0, 0, 0.4) 80%,
+                rgba(0, 0, 0, 0.2) 100%
+            );
+            mask-image: linear-gradient(
+                to right,
+                rgba(0, 0, 0, 1) 0%,
+                rgba(0, 0, 0, 0.8) 30%,
+                rgba(0, 0, 0, 0.6) 50%,
+                rgba(0, 0, 0, 0.4) 80%,
+                rgba(0, 0, 0, 0.2) 100%
+            );
+        }
+
+        @keyframes glitch {
+            0% {
+                opacity: 1;
+            }
+            15% {
+                opacity: 0.9;
+            }
+            16% {
+                opacity: 1;
+            }
+            49% {
+                opacity: 0.8;
+            }
+            50% {
+                opacity: 1;
+            }
+            99% {
+                opacity: 0.9;
+            }
+            100% {
+                opacity: 1;
+            }
+        }
+
+        .scanner {
+            display: none; /* This was in the original CSS, kept it */
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 4px;
+            height: 300px;
+            border-radius: 30px;
+            background: linear-gradient(
+                to bottom,
+                transparent,
+                rgba(192, 132, 252, 0.8), /* Re-themed to purple */
+                rgba(192, 132, 252, 1),   /* Re-themed to purple */
+                rgba(192, 132, 252, 0.8), /* Re-themed to purple */
+                transparent
+            );
+            box-shadow: 0 0 20px rgba(192, 132, 252, 0.8), 0 0 40px rgba(192, 132, 252, 0.4); /* Re-themed */
+            animation: scanPulse 2s ease-in-out infinite alternate;
+            z-index: 10;
+        }
+
+        @keyframes scanPulse {
+            0% {
+                opacity: 0.8;
+                transform: translate(-50%, -50%) scaleY(1);
+            }
+            100% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scaleY(1.1);
+            }
+        }
+        
+        .card-normal {
+            clip-path: inset(0 0 0 var(--clip-right, 0%));
+        }
+
+        .card-ascii {
+            clip-path: inset(0 calc(100% - var(--clip-left, 0%)) 0 0);
+        }
+
+        .scan-effect {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(192, 132, 252, 0.4), /* Re-themed to purple */
+                transparent
+            );
+            animation: scanEffect 0.6s ease-out;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        @keyframes scanEffect {
+            0% {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
+        #particleCanvas {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            width: 100vw;
+            height: 250px;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #scannerCanvas {
+            position: absolute;
+            top: 50%;
+            left: -3px; /* Original value */
+            transform: translateY(-50%);
+            width: 100vw;
+            height: 300px;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* REMOVED .inspiration-credit styles */
+        /* FAQ card styles: each question gets its own blurred/glass background */
+        .faq-card {
+          background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+          backdrop-filter: blur(8px) saturate(120%);
+          -webkit-backdrop-filter: blur(8px) saturate(120%);
+          border: 1px solid rgba(255,255,255,0.06);
+          box-shadow: 0 6px 24px rgba(2,6,23,0.6);
+          border-radius: 14px;
+          padding: 18px 20px;
+          margin-bottom: 16px;
+        }
+        .faq-card .faq-question-btn {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          background: transparent;
+          border: none;
+          padding: 0;
+          color: inherit;
+          cursor: pointer;
+        }
+        .faq-card h3 {
+          font-size: 1.05rem;
+          margin: 0;
+          color: #fff;
+        }
+        .faq-card p {
+          margin: 0;
+          color: rgba(255,255,255,0.85);
+        }
+    `;
+    return <style>{css}</style>;
+};
+
+// --- Morphing Background Component ---
+const MorphingBackground = () => {
+    const containerRef = useRef(null);
+    const animationFrameId = useRef(null);
+    
+    // THIS WAS MISSING
+    const threeState = useRef({
+        scene: null,
+        camera: null,
+        renderer: null,
+        composer: null,
+        controls: null,
+        particles: null,
+        sparkles: null,
+        stars: null,
+        clock: new THREE.Clock(),
+        currentPattern: 0,
+        isTrans: false,
+        prog: 0,
+        lastMorphTime: 0,
+    });
+    
+    // ... (rest of MorphingBackground component is unchanged) ...
+    // ... [Immersive content redacted for brevity.] ...
+
+    useEffect(() => {
+        // --- Constants ---
+        const PARTICLE_COUNT = 15000;
+        const SPARK_COUNT = 2000;
+        const STAR_COUNT = 7000;
+        const morphSpeed = .03;
+        const morphInterval = 5; // Morph every 5 seconds
+
+        // --- Helper Functions ---
+        const normalise = (points, size) => {
+            if (points.length === 0) return [];
+            const box = new THREE.Box3().setFromPoints(points);
+            const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray()) || 1;
+            const centre = box.getCenter(new THREE.Vector3());
+            return points.map(p => p.clone().sub(centre).multiplyScalar(size / maxDim));
+        };
+
+        const torusKnot = (n) => {
+            const geometry = new THREE.TorusKnotGeometry(10, 3, 200, 16, 2, 3);
+            const points = [];
+            const positionAttribute = geometry.attributes.position;
+            for (let i = 0; i < positionAttribute.count; i++) {
+                points.push(new THREE.Vector3().fromBufferAttribute(positionAttribute, i));
+            }
+            const result = [];
+            for (let i = 0; i < n; i++) {
+                result.push(points[i % points.length].clone());
+            }
+            return normalise(result, 50);
+        };
+
+        const halvorsen = (n) => {
+            const pts = [];
+            let x = 0.1, y = 0, z = 0;
+            const a = 1.89;
+            const dt = 0.005;
+            for (let i = 0; i < n * 25; i++) {
+                const dx = -a * x - 4 * y - 4 * z - y * y;
+                const dy = -a * y - 4 * z - 4 * x - z * z;
+                const dz = -a * z - 4 * x - 4 * y - x * x;
+                x += dx * dt;
+                y += dy * dt;
+                z += dz * dt;
+                if (i > 200 && i % 25 === 0) {
+                    pts.push(new THREE.Vector3(x, y, z));
+                }
+                if (pts.length >= n) break;
+            }
+            while(pts.length < n) pts.push(pts[Math.floor(Math.random()*pts.length)].clone());
+            return normalise(pts, 60);
+        };
+
+        const dualHelix = (n) => {
+            const pts = [];
+            const turns = 5;
+            const radius = 15;
+            const height = 40;
+            for (let i = 0; i < n; i++) {
+                const isSecondHelix = i % 2 === 0;
+                const angle = (i / n) * Math.PI * 2 * turns;
+                const y = (i / n) * height - height / 2;
+                const r = radius + (isSecondHelix ? 5 : -5);
+                const x = Math.cos(angle) * r;
+                const z = Math.sin(angle) * r;
+                pts.push(new THREE.Vector3(x, y, z));
+            }
+            return normalise(pts, 60);
+        };
+
+        const deJong = (n) => {
+            const pts = [];
+            let x = 0.1, y = 0.1;
+            const a = 1.4, b = -2.3, c = 2.4, d = -2.1;
+            for (let i = 0; i < n; i++) {
+                const xn = Math.sin(a * y) - Math.cos(b * x);
+                const yn = Math.sin(c * x) - Math.cos(d * y);
+                x = xn;
+                y = yn;
+                const z = Math.sin(x * y * 0.5);
+                pts.push(new THREE.Vector3(x, y, z));
+            }
+            return normalise(pts, 55);
+        };
+
+        const PATTERNS = [torusKnot, halvorsen, dualHelix, deJong];
+
+        const createStars = () => {
+            const geo=new THREE.BufferGeometry();const pos=new Float32Array(STAR_COUNT*3);const col=new Float32Array(STAR_COUNT*3);const size=new Float32Array(STAR_COUNT);const rnd=new Float32Array(STAR_COUNT);const R=900;for(let i=0;i<STAR_COUNT;i++){const i3=i*3,θ=Math.random()*2*Math.PI,φ=Math.acos(2*Math.random()-1),r=R*Math.cbrt(Math.random());pos[i3]=r*Math.sin(φ)*Math.cos(θ);pos[i3+1]=r*Math.sin(φ)*Math.sin(θ);pos[i3+2]=r*Math.cos(φ);const c=new THREE.Color().setHSL(Math.random()*.6,.3+.3*Math.random(),.55+.35*Math.random());col[i3]=c.r;col[i3+1]=c.g;col[i3+2]=c.b;size[i]=.25+Math.pow(Math.random(),4)*2.1;rnd[i]=Math.random()*Math.PI*2}geo.setAttribute("position",new THREE.BufferAttribute(pos,3));geo.setAttribute("color",new THREE.BufferAttribute(col,3));geo.setAttribute("size",new THREE.BufferAttribute(size,1));geo.setAttribute("random",new THREE.BufferAttribute(rnd,1));const mat=new THREE.ShaderMaterial({uniforms:{time:{value:0}},vertexShader:`attribute float size;attribute float random;
+            varying vec3 vColor;varying float vRnd;
+            void main(){vColor=color;vRnd=random;vec4 mv=modelViewMatrix*vec4(position,1.);gl_PointSize=size*(250./-mv.z);gl_Position=projectionMatrix*mv;}`,fragmentShader:`uniform float time;varying vec3 vColor;varying float vRnd;
+            void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);float a=1.-smoothstep(.4,.5,d);a*=.7+.3*sin(time*(.6+vRnd*.3)+vRnd*5.);if(a<.02)discard;gl_FragColor=vec4(vColor,a);}`,transparent:true,depthWrite:false,vertexColors:true,blending:THREE.AdditiveBlending});return new THREE.Points(geo,mat)
+        };
+
+        const makeParticles = (count, palette) => {
+            const geo=new THREE.BufferGeometry();
+            const pos=new Float32Array(count*3);
+            const col=new Float32Array(count*3);
+            const size=new Float32Array(count);
+            const rnd=new Float32Array(count*3);
+            for(let i=0;i<count;i++){
+                const i3=i*3,base=palette[Math.random()*palette.length|0],hsl={h:0,s:0,l:0};
+                base.getHSL(hsl);
+                hsl.h+=(Math.random()-.5)*.05;
+                hsl.s=Math.min(1,Math.max(.7,hsl.s+(Math.random()-.5)*.3));
+                hsl.l=Math.min(.9,Math.max(.5,hsl.l+(Math.random()-.5)*.4));
+                const c=new THREE.Color().setHSL(hsl.h,hsl.s,hsl.l);
+                col[i3]=c.r;col[i3+1]=c.g;col[i3+2]=c.b;
+                size[i]=.7+Math.random()*1.1;
+                rnd[i3]=Math.random()*10;
+                rnd[i3+1]=Math.random()*Math.PI*2;
+                rnd[i3+2]=.5+.5*Math.random();
+            }
+            geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+            geo.setAttribute("color",new THREE.BufferAttribute(col,3));
+            geo.setAttribute("size",new THREE.BufferAttribute(size,1));
+            geo.setAttribute("random",new THREE.BufferAttribute(rnd,3));
+            
+            const mat=new THREE.ShaderMaterial({
+                uniforms:{time:{value:0},hueSpeed:{value:0.12}},
+                vertexShader:`uniform float time;attribute float size;attribute vec3 random;
+            varying vec3 vCol;varying float vR;
+            void main(){
+                vCol=color;vR=random.z;
+                vec3 p=position;
+                float t=time*.25*random.z;
+                float ax=t+random.y, ay=t*.75+random.x;
+                float amp=(.6+sin(random.x+t*.6)*.3)*random.z;
+                p.x+=sin(ax+p.y*.06+random.x*.1)*amp;
+                p.y+=cos(ay+p.z*.06+random.y*.1)*amp;
+                p.z+=sin(ax*.85+p.x*.06+random.z*.1)*amp;
+                vec4 mv=modelViewMatrix*vec4(p,1.);
+                float pulse=.9+.1*sin(time*1.15+random.y);
+                gl_PointSize=size*pulse*(350./-mv.z);
+                gl_Position=projectionMatrix*mv;
+            }`,
+                fragmentShader:`
+            uniform float time;
+            uniform float hueSpeed;
+            varying vec3 vCol;
+            varying float vR;
+            
+            vec3 hueShift(vec3 c, float h) {
+                const vec3 k = vec3(0.57735);
+                float cosA = cos(h);
+                float sinA = sin(h);
+                return c * cosA + cross(k, c) * sinA + k * dot(k, c) * (1.0 - cosA);
+            }
+            
+            void main() {
+                vec2 uv = gl_PointCoord - 0.5;
+                float d = length(uv);
+                
+                float core = smoothstep(0.05, 0.0, d);
+                float angle = atan(uv.y, uv.x);
+                float flare = pow(max(0.0, sin(angle * 6.0 + time * 2.0 * vR)), 4.0);
+                flare *= smoothstep(0.5, 0.0, d);
+                float glow = smoothstep(0.4, 0.1, d);
+                
+                float alpha = core * 1.0 + flare * 0.5 + glow * 0.2;
+                
+                vec3 color = hueShift(vCol, time * hueSpeed);
+                vec3 finalColor = mix(color, vec3(1.0, 0.95, 0.9), core);
+                finalColor = mix(finalColor, color, flare * 0.5 + glow * 0.5);
+            
+                if (alpha < 0.01) discard;
+                
+                gl_FragColor = vec4(finalColor, alpha);
+            }`,
+                transparent:true,depthWrite:false,vertexColors:true,blending:THREE.AdditiveBlending
+            });
+            return new THREE.Points(geo,mat);
+        };
+
+        const createSparkles = (count) => {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const size = new Float32Array(count);
+            const rnd = new Float32Array(count * 3);
+        
+            for (let i = 0; i < count; i++) {
+                size[i] = 0.5 + Math.random() * 0.8;
+                rnd[i*3] = Math.random() * 10;
+                rnd[i*3+1] = Math.random() * Math.PI * 2;
+                rnd[i*3+2] = 0.5 + 0.5 * Math.random();
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+            geo.setAttribute('random', new THREE.BufferAttribute(rnd, 3));
+        
+            const mat = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0 } },
+                vertexShader: `
+                    uniform float time;
+                    attribute float size;
+                    attribute vec3 random;
+                    void main() {
+                        vec3 p = position;
+                        float t = time * 0.25 * random.z;
+                        float ax = t + random.y, ay = t * 0.75 + random.x;
+                        float amp = (0.6 + sin(random.x + t * 0.6) * 0.3) * random.z;
+                        p.x += sin(ax + p.y * 0.06 + random.x * 0.1) * amp;
+                        p.y += cos(ay + p.z * 0.06 + random.y * 0.1) * amp;
+                        p.z += sin(ax * 0.85 + p.x * 0.06 + random.z * 0.1) * amp;
+                        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }`,
+                fragmentShader: `
+                    uniform float time;
+                    void main() {
+                        float d = length(gl_PointCoord - vec2(0.5));
+                        float alpha = 1.0 - smoothstep(0.4, 0.5, d);
+                        if (alpha < 0.01) discard;
+                        gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+                    }`,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+        
+            return new THREE.Points(geo, mat);
+        };
+
+        const applyPattern = (i) => {
+            const { particles, sparkles } = threeState.current;
+            const pts = PATTERNS[i](PARTICLE_COUNT);
+            const particleArr = particles.geometry.attributes.position.array;
+            const sparkleArr = sparkles.geometry.attributes.position.array;
+            for(let j=0; j<PARTICLE_COUNT; j++){
+                const idx = j*3;
+                const p = pts[j] || new THREE.Vector3();  
+                particleArr[idx] = p.x;
+                particleArr[idx+1] = p.y;
+                particleArr[idx+2] = p.z;
+                if (j < SPARK_COUNT) {  
+                    sparkleArr[idx] = p.x;
+                    sparkleArr[idx+1] = p.y;
+                    sparkleArr[idx+2] = p.z;
+                }
+            }
+            particles.geometry.attributes.position.needsUpdate=true;
+            sparkles.geometry.attributes.position.needsUpdate=true;
+        };
+
+        const beginMorph = () => {
+            const { particles } = threeState.current;
+            threeState.current.isTrans = true;
+            threeState.current.prog = 0;
+            const next = (threeState.current.currentPattern + 1) % PATTERNS.length;
+            const fromPts = particles.geometry.attributes.position.array.slice();
+            const toPts = PATTERNS[next](PARTICLE_COUNT);
+            
+            const to = new Float32Array(PARTICLE_COUNT*3);
+            if(toPts.length > 0){
+                for(let j=0; j<PARTICLE_COUNT; j++){
+                    const idx=j*3, p=toPts[j];
+                    to[idx]=p.x; to[idx+1]=p.y; to[idx+2]=p.z;
+                }
+                particles.userData={from: fromPts, to, next};
+                threeState.current.sparkles.userData={from: fromPts, to, next}; 
+            }
+        };
+
+        const handleResize = () => {
+            const { camera, renderer, composer } = threeState.current;
+            if (camera && renderer && composer) {
+                camera.aspect = innerWidth / innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(innerWidth, innerHeight);
+                composer.setSize(innerWidth, innerHeight);
+            }
+        };
+
+        const animate = () => {
+            animationFrameId.current = requestAnimationFrame(animate);
+            
+            const state = threeState.current;
+            const dt = state.clock.getDelta(), t = state.clock.getElapsedTime();
+        
+            state.controls.update();
+        
+            // Update shader times
+            state.particles.material.uniforms.time.value = t;
+            state.sparkles.material.uniforms.time.value = t;
+            state.stars.material.uniforms.time.value = t;
+        
+            if (state.isTrans) {
+                state.prog += morphSpeed;
+                const eased = state.prog >= 1 ? 1 : 1 - Math.pow(1 - state.prog, 3);
+                const { from, to } = state.particles.userData;
+                if (to) {
+                    const particleArr = state.particles.geometry.attributes.position.array;
+                    const sparkleArr = state.sparkles.geometry.attributes.position.array;
+                    for (let i = 0; i < particleArr.length; i++) {
+                        const val = from[i] + (to[i] - from[i]) * eased;
+                        particleArr[i] = val;
+                        if (i < sparkleArr.length) {
+                            sparkleArr[i] = val;
+                        }
+                    }
+                    state.particles.geometry.attributes.position.needsUpdate = true;
+                    state.sparkles.geometry.attributes.position.needsUpdate = true;
+                }
+                if (state.prog >= 1) {
+                    state.currentPattern = state.particles.userData.next;
+                    state.isTrans = false;
+                    state.lastMorphTime = t; // Reset timer
+                }
+            } else if (t - state.lastMorphTime > morphInterval) {
+                // If not transitioning and time is up, start a new morph
+                beginMorph();
+            }
+        
+            state.composer.render(dt);
+        };
+
+        // --- Init Function ---
+        const init = () => {
+            const state = threeState.current;
+            const container = containerRef.current;
+
+            state.scene = new THREE.Scene();
+            state.scene.fog = new THREE.FogExp2(0x050203, .012);
+        
+            state.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, .1, 2500);
+            state.camera.position.set(0, 0, 80);
+        
+            state.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            state.renderer.setPixelRatio(devicePixelRatio);
+            state.renderer.setSize(innerWidth, innerHeight);
+            container.appendChild(state.renderer.domElement);
+        
+            state.controls = new OrbitControls(state.camera, state.renderer.domElement);
+            state.controls.enableDamping = true;
+            state.controls.dampingFactor = 0.05;
+            state.controls.screenSpacePanning = false;
+            state.controls.minDistance = 20;
+            state.controls.maxDistance = 200;
+            state.controls.target.set(0, 0, 0);
+            state.controls.autoRotate = true;
+            state.controls.autoRotateSpeed = 0.5;
+        
+            state.stars = createStars();
+            state.scene.add(state.stars);
+        
+            const palette = [0xff3c78, 0xff8c00, 0xfff200, 0x00cfff, 0xb400ff, 0xffffff, 0xff4040].map(c => new THREE.Color(c));
+            state.particles = makeParticles(PARTICLE_COUNT, palette);
+            state.sparkles = createSparkles(SPARK_COUNT);
+            state.scene.add(state.particles);
+            state.scene.add(state.sparkles);
+        
+            state.composer = new EffectComposer(state.renderer);
+            state.composer.addPass(new RenderPass(state.scene, state.camera));
+            state.composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .45, .5, .85));
+            const after = new AfterimagePass();
+            after.uniforms.damp.value = .92;
+            state.composer.addPass(after);
+            state.composer.addPass(new OutputPass());
+        
+            applyPattern(state.currentPattern);
+        
+            window.addEventListener("resize", handleResize);
+        };
+        
+        // --- Run ---
+        init();
+        animate();
+
+        // --- Cleanup Function ---
+        return () => {
+            cancelAnimationFrame(animationFrameId.current);
+            window.removeEventListener("resize", handleResize);
+            
+            const state = threeState.current;
+            if (containerRef.current && state.renderer) {
+                containerRef.current.removeChild(state.renderer.domElement);
+            }
+            
+            // Dispose of Three.js objects
+            if (state.scene) {
+                state.scene.traverse(obj => {
+                    if (obj.geometry) obj.geometry.dispose();
+                    if (obj.material) {
+                        if (Array.isArray(obj.material)) {
+                            obj.material.forEach(m => m.dispose());
+                        } else {
+                            obj.material.dispose();
+                        }
+                    }
+                });
+            }
+            if (state.renderer) state.renderer.dispose();
+            if (state.composer) {
+                state.composer.passes.forEach(pass => {
+                    if (pass.dispose) pass.dispose();
+                });
+            }
+        };
+    }, []); // Empty dependency array ensures this runs only once on mount
+
+    return (
+        <React.Fragment>
+            <div id="container" ref={containerRef} />
+            <div className="vignette" />
+        </React.Fragment>
+    );
+};
+
+
+// --- SAYANA Content Component ---
+
+// --- SVG Icon Components (Re-themed) ---
 const FeatureIcon = ({ type, className }) => {
-  // Updated default color to the new brown
-  const iconClass = className || "w-12 h-12 text-[#603B2A] mb-6";
+  const iconClass = className || "w-12 h-12 text-white mb-6"; // Changed to white
   
   switch (type) {
     case 'emotion':
@@ -19,7 +811,7 @@ const FeatureIcon = ({ type, className }) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       );
-    case 'translate': // UPDATED ICON
+    case 'translate':
       return (
         <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2V10a2 2 0 012-2h8z"></path>
@@ -39,8 +831,7 @@ const FeatureIcon = ({ type, className }) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM12 12a4 4 0 100-8 4 4 0 000 8z" />
         </svg>
       );
-    // --- New Icons for expanded sections ---
-    case 'step1': // How it works: Open App - UPDATED ICON
+    case 'step1':
       return (
         <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2zM12 8v4m0 0l-2-2m2 2l2-2"></path>
@@ -48,15 +839,15 @@ const FeatureIcon = ({ type, className }) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
         </svg>
       );
-    case 'step2': // How it works: AI Scans
+    case 'step2':
       return (
         <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
       );
-    case 'step3': // How it works: Translate
+    case 'step3':
       return (
         <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8s-9-3.582-9-8 4.03-8 9-8 9 3.582 9 8z"></path></svg>
       );
-    case 'tech-emotion': // UPDATED ICON
+    case 'tech-emotion':
       return (
         <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -78,9 +869,6 @@ const FeatureIcon = ({ type, className }) => {
   }
 };
 
-/**
- * Renders a floating hand sign SVG.
- */
 const HandSignIcon = ({ type, className }) => {
   const iconClass = className || "w-full h-full";
   if (type === 'love') {
@@ -117,9 +905,6 @@ const HandSignIcon = ({ type, className }) => {
   return null;
 };
 
-/**
- * Renders a floating speech-to-sign symbol.
- */
 const SpeechToSignIcon = ({ className }) => (
   <svg className={className || "w-full h-full"} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M7 12V11C7 9.11438 7 8.17157 7.58579 7.58579C8.17157 7 9.11438 7 11 7H13C14.8856 7 15.8284 7 16.4142 7.58579C17 8.17157 17 9.11438 17 11V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -130,7 +915,7 @@ const SpeechToSignIcon = ({ className }) => (
   </svg>
 );
 
-// --- New Chatbot Icons ---
+// --- Chatbot Icons (Re-themed) ---
 const ChatIcon = ({ className }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
 );
@@ -140,10 +925,7 @@ const CloseIcon = ({ className }) => (
 );
 
 const SendIcon = ({ className }) => (
-  // Simple filled triangle pointing right (suitable for a send button)
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-    <path d="M3 2L21 12L3 22V13L15 12L3 11V2Z" />
-  </svg>
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
 );
 
 const ChevronDownIcon = ({ className }) => (
@@ -155,10 +937,6 @@ const StarIcon = ({ className }) => (
 );
 
 // --- API Helper ---
-
-/**
- * Fetches from Gemini API with exponential backoff.
- */
 const fetchWithBackoff = async (url, options, retries = 5, delay = 1000) => {
   for (let i = 0; i < retries; i++) {
     try {
@@ -170,7 +948,6 @@ const fetchWithBackoff = async (url, options, retries = 5, delay = 1000) => {
           console.error("Client error:", response.status, await response.text());
           throw new Error(`Client error: ${response.status}`);
       }
-      // Retry on server errors (5xx) or rate-limiting (429)
     } catch (error) {
       if (i === retries - 1) {
         console.error("Final attempt failed:", error);
@@ -184,7 +961,6 @@ const fetchWithBackoff = async (url, options, retries = 5, delay = 1000) => {
 
 
 // --- Data for Features and Animations ---
-
 const features = [
   {
     title: "AI Emotion Detection",
@@ -287,7 +1063,6 @@ const faqData = [
 
 
 // --- Animation Variants ---
-
 const containerVariants = {
   hidden: {},
   visible: {
@@ -327,11 +1102,7 @@ const buttonSpring = {
   damping: 20
 };
 
-// --- New Sub-Components ---
-
-/**
- * SectionHeader: A reusable component for section titles and subtitles.
- */
+// --- Sub-Components (Re-themed) ---
 const SectionHeader = ({ title, subtitle }) => (
   <motion.div
     className="mb-16 text-center"
@@ -340,18 +1111,15 @@ const SectionHeader = ({ title, subtitle }) => (
     viewport={{ once: true, amount: 0.3 }}
     variants={fadeIn}
   >
-    <h2 className="text-4xl sm:text-5xl font-extrabold text-[#4a2e1f] mb-4">
+    <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-4">
       {title}
     </h2>
-    <p className="text-lg sm:text-xl text-[#603B2A]/80 max-w-3xl mx-auto">
+    <p className="text-lg sm:text-xl text-white/80 max-w-3xl mx-auto">
       {subtitle}
     </p>
   </motion.div>
 );
 
-/**
- * HowItWorksSection: New section explaining the app's process.
- */
 const HowItWorksSection = () => (
   <section id="how-it-works" className="w-full max-w-7xl mx-auto px-6 pt-24 sm:px-10 scroll-mt-20">
     <SectionHeader
@@ -368,16 +1136,16 @@ const HowItWorksSection = () => (
       {howItWorksSteps.map((step, index) => (
         <motion.div
           key={index}
-          className="flex flex-col items-center text-center p-8 rounded-3xl bg-white/60 shadow-xl shadow-green-300/20 backdrop-blur-lg"
+          className="flex flex-col items-center text-center p-8 rounded-3xl bg-white/5 backdrop-blur-md shadow-lg shadow-black/20 border border-white/10"
           variants={cardVariants}
         >
-          <div className="relative w-24 h-24 flex items-center justify-center rounded-full bg-green-100/50 mb-6">
-            <FeatureIcon type={step.icon} className="w-12 h-12 text-[#603B2A] z-10" />
+          <div className="relative w-24 h-24 flex items-center justify-center rounded-full bg-white/10 mb-6">
+            <FeatureIcon type={step.icon} className="w-12 h-12 text-white z-10" />
           </div>
-          <h3 className="mb-3 text-2xl font-bold text-[#4a2e1f]">
+          <h3 className="mb-3 text-2xl font-bold text-white">
             {step.title}
           </h3>
-          <p className="text-[#603B2A]/80">
+          <p className="text-white/80">
             {step.description}
           </p>
         </motion.div>
@@ -386,63 +1154,57 @@ const HowItWorksSection = () => (
   </section>
 );
 
-/**
- * TechnologySection: New section detailing the AI technology.
- */
 const TechnologySection = ({ onGetStartedClick }) => {
   const [activeTab, setActiveTab] = useState('emotion');
 
   return (
-    <section className="w-full bg-green-100/30 mt-24 py-24">
+    <section className="w-full bg-transparent mt-24 py-24">
       <div className="w-full max-w-7xl mx-auto px-6 sm:px-10">
         <SectionHeader
           title="Our Technology"
           subtitle="Powered by cutting-edge AI, SAYANA is built on empathy and precision. Explore the models that make communication possible."
         />
         <div className="flex justify-center mb-12">
-          <div className="flex p-1 rounded-full bg-green-100/50">
+          <div className="flex p-1 rounded-full bg-white/10">
             <button
               onClick={() => setActiveTab('emotion')}
-              className={`px-6 sm:px-10 py-3 text-sm sm:text-base font-semibold rounded-full transition-colors ${activeTab === 'emotion' ? 'bg-white text-[#603B2A] shadow-md' : 'text-[#603B2A]/70 hover:text-[#603B2A]'}`}
+              className={`px-6 sm:px-10 py-3 text-sm sm:text-base font-semibold rounded-full transition-colors ${activeTab === 'emotion' ? 'bg-white text-purple-600 shadow-md' : 'text-white/70 hover:text-white'}`}
             >
               AI Emotion Detection
             </button>
             <button
               onClick={() => setActiveTab('translation')}
-              className={`px-6 sm:px-10 py-3 text-sm sm:text-base font-semibold rounded-full transition-colors ${activeTab === 'translation' ? 'bg-white text-[#603B2A] shadow-md' : 'text-[#603B2A]/70 hover:text-[#603B2A]'}`}
+              className={`px-6 sm:px-10 py-3 text-sm sm:text-base font-semibold rounded-full transition-colors ${activeTab === 'translation' ? 'bg-white text-purple-600 shadow-md' : 'text-white/70 hover:text-white'}`}
             >
               Sign Language Translation
             </button>
           </div>
         </div>
 
-        {/* REBUILT CONTENT AREA: Replaced grid with a single animated container */}
         <div className="relative w-full min-h-[450px]">
           <AnimatePresence mode="wait">
             {activeTab === 'emotion' && (
               <motion.div
                 key="emotion-content"
-                className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center p-8 sm:p-12 rounded-3xl bg-white/60 shadow-xl shadow-green-300/20 backdrop-blur-lg"
+                className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center p-8 sm:p-12 rounded-3xl bg-white/5 backdrop-blur-md shadow-lg shadow-black/20 border border-white/10"
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.4 }}
               >
-                {/* Text for Emotion */}
                 <div>
-                  <h3 className="text-3xl font-bold text-[#4a2e1f] mb-4">Understanding the Unspoken</h3>
-                  <p className="text-lg text-[#603B2A]/80 mb-6">
-                    Communication is more than just words. Our neural network analyzes facial landmarks to interpret the emotional context behind the sign or expression. This means SAYANA doesn't just translate what you say, but also how you feel.
+                  <h3 className="text-3xl font-bold text-white mb-4">Understanding the Unspoken</h3>
+                  <p className="text-lg text-white/80 mb-6">
+                    Communication is more than just words. Our neural network analyzes facial landmarks to interpret the emotional context.
                   </p>
-                  {/* Corrected feature list for Emotion */}
                   <ul className="space-y-3">
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Live analysis via secure API keys</li>
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Trained on diverse, global datasets</li>
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Subtle expression recognition (happy, sad, etc.)</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Live analysis via secure API keys</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Trained on diverse, global datasets</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Subtle expression recognition</li>
                   </ul>
                   <motion.button
                     onClick={onGetStartedClick}
-                    className="mt-8 rounded-full bg-[#603B2A] px-8 py-3 text-base font-semibold text-white shadow-lg shadow-[#603B2A]/30 transition-all"
+                    className="mt-8 rounded-full bg-purple-600 px-8 py-3 text-base font-semibold text-white shadow-lg shadow-purple-600/30 transition-all"
                     whileHover={{ scale: 1.05, y: -2 }}
                     whileTap={{ scale: 0.95 }}
                     transition={buttonSpring}
@@ -450,14 +1212,13 @@ const TechnologySection = ({ onGetStartedClick }) => {
                     Get Started
                   </motion.button>
                 </div>
-                {/* Icon for Emotion */}
                 <motion.div
                   className="flex items-center justify-center min-h-[250px]"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.2 }}
                 >
-                  <FeatureIcon type="tech-emotion" className="w-48 h-48 text-[#603B2A]/60" />
+                  <FeatureIcon type="tech-emotion" className="w-48 h-48 text-white/60" />
                 </motion.div>
               </motion.div>
             )}
@@ -465,35 +1226,33 @@ const TechnologySection = ({ onGetStartedClick }) => {
             {activeTab === 'translation' && (
               <motion.div
                 key="translation-content"
-                className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center p-8 sm:p-12 rounded-3xl bg-white/60 shadow-xl shadow-green-300/20 backdrop-blur-lg"
+                className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center p-8 sm:p-12 rounded-3xl bg-white/5 backdrop-blur-md shadow-lg shadow-black/20 border border-white/10"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.4 }}
               >
-                {/* Icon for Translation (reversed order for visual interest) */}
                 <motion.div
                   className="flex items-center justify-center min-h-[250px]"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.2 }}
                 >
-                  <FeatureIcon type="tech-sign" className="w-48 h-48 text-[#603B2A]/60" />
+                  <FeatureIcon type="tech-sign" className="w-48 h-48 text-white/60" />
                 </motion.div>
-                {/* Text for Translation */}
                 <div>
-                  <h3 className="text-3xl font-bold text-[#4a2e1f] mb-4">Bridging Worlds with ISL</h3>
-                  <p className="text-lg text-[#603B2A]/80 mb-6">
-                    Our translation engine is built with a deep understanding of ISL (Indian Sign Language). It translates signs to voice/text and vice-versa in real time.
+                  <h3 className="text-3xl font-bold text-white mb-4">Bridging Worlds with ISL</h3>
+                  <p className="text-lg text-white/80 mb-6">
+                    Our translation engine is built with a deep understanding of ISL (Indian Sign Language).
                   </p>
                   <ul className="space-y-3">
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Supports ISL</li>
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Context-aware translation engine</li>
-                    <li className="flex items-center text-[#603B2A]"><span className="w-5 h-5 mr-3 rounded-full bg-[#603B2A] text-white flex items-center justify-center text-xs">✔</span>Speech-to-sign generation</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Supports ISL</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Context-aware translation engine</li>
+                    <li className="flex items-center text-white"><span className="w-5 h-5 mr-3 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs">✔</span>Speech-to-sign generation</li>
                   </ul>
                   <motion.button
                     onClick={onGetStartedClick}
-                    className="mt-8 rounded-full bg-[#603B2A] px-8 py-3 text-base font-semibold text-white shadow-lg shadow-[#603B2A]/30 transition-all"
+                    className="mt-8 rounded-full bg-purple-600 px-8 py-3 text-base font-semibold text-white shadow-lg shadow-purple-600/30 transition-all"
                     whileHover={{ scale: 1.05, y: -2 }}
                     whileTap={{ scale: 0.95 }}
                     transition={buttonSpring}
@@ -505,37 +1264,1244 @@ const TechnologySection = ({ onGetStartedClick }) => {
             )}
           </AnimatePresence>
         </div>
-        {/* End of rebuilt content area */}
-
       </div>
     </section>
   );
 };
 
-/**
- * TestimonialCard: A single card for the testimonials section.
- */
+// --- NEW CARD STREAM SECTION ---
+
+const CardStreamSection = () => {
+    // Refs for DOM elements
+    const cardStreamContainerRef = useRef(null);
+    const cardStreamRef = useRef(null);
+    const cardLineRef = useRef(null);
+    // REMOVED speedValueRef
+    const particleCanvasRef = useRef(null);
+    const scannerCanvasRef = useRef(null);
+    // REMOVED inspirationCreditRef
+
+    // Ref to hold class instances
+    const cardStreamInstanceRef = useRef(null);
+    const particleSystemInstanceRef = useRef(null);
+    const particleScannerInstanceRef = useRef(null);
+
+    // REMOVED Event handlers: toggleAnimation, resetPosition, changeDirection
+
+    useEffect(() => {
+        // --- All the JS code from script.js goes in here ---
+        
+        const codeChars =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789(){}[]<>;:,._-+=!@#$%^&*|\\/\"'`~?";
+
+        class CardStreamController {
+            constructor(container, cardLine, speedIndicator) {
+                this.container = container;
+                this.cardLine = cardLine;
+                this.speedIndicator = speedIndicator;
+
+                this.position = 0;
+                this.velocity = 120;
+                this.direction = -1;
+                this.isAnimating = true;
+                this.isDragging = false;
+
+                this.lastTime = 0;
+                this.lastMouseX = 0;
+                this.mouseVelocity = 0;
+                this.friction = 0.95;
+                this.minVelocity = 30;
+
+                this.containerWidth = 0;
+                this.cardLineWidth = 0;
+
+                this.init();
+            }
+
+            init() {
+                this.populateCardLine();
+                this.calculateDimensions();
+                this.setupEventListeners();
+                this.updateCardPosition();
+                this.animate();
+                this.startPeriodicUpdates();
+            }
+
+            calculateDimensions() {
+                this.containerWidth = this.container.offsetWidth;
+                const cardWidth = 400;
+                const cardGap = 60;
+                const cardCount = this.cardLine.children.length;
+                this.cardLineWidth = (cardWidth + cardGap) * cardCount;
+            }
+
+            setupEventListeners() {
+                this.cardLine.addEventListener("mousedown", (e) => this.startDrag(e));
+                document.addEventListener("mousemove", (e) => this.onDrag(e));
+                document.addEventListener("mouseup", () => this.endDrag());
+
+                this.cardLine.addEventListener(
+                    "touchstart",
+                    (e) => this.startDrag(e.touches[0]),
+                    { passive: false }
+                );
+                document.addEventListener("touchmove", (e) => this.onDrag(e.touches[0]), {
+                    passive: false,
+                });
+                document.addEventListener("touchend", () => this.endDrag());
+
+                this.cardLine.addEventListener("wheel", (e) => this.onWheel(e));
+                this.cardLine.addEventListener("selectstart", (e) => e.preventDefault());
+                this.cardLine.addEventListener("dragstart", (e) => e.preventDefault());
+
+                window.addEventListener("resize", () => this.calculateDimensions());
+            }
+
+            startDrag(e) {
+                if (e.preventDefault) e.preventDefault();
+
+                this.isDragging = true;
+                this.isAnimating = false;
+                this.lastMouseX = e.clientX;
+                this.mouseVelocity = 0;
+
+                const transform = window.getComputedStyle(this.cardLine).transform;
+                if (transform !== "none") {
+                    const matrix = new DOMMatrix(transform);
+                    this.position = matrix.m41;
+                }
+
+                this.cardLine.style.animation = "none";
+                this.cardLine.classList.add("dragging");
+
+                document.body.style.userSelect = "none";
+                document.body.style.cursor = "grabbing";
+            }
+
+            onDrag(e) {
+                if (!this.isDragging) return;
+                if (e.preventDefault) e.preventDefault();
+
+                const deltaX = e.clientX - this.lastMouseX;
+                this.position += deltaX;
+                this.mouseVelocity = deltaX * 60;
+                this.lastMouseX = e.clientX;
+
+                this.cardLine.style.transform = `translateX(${this.position}px)`;
+                this.updateCardClipping();
+            }
+
+            endDrag() {
+                if (!this.isDragging) return;
+
+                this.isDragging = false;
+                this.cardLine.classList.remove("dragging");
+
+                if (Math.abs(this.mouseVelocity) > this.minVelocity) {
+                    this.velocity = Math.abs(this.mouseVelocity);
+                    this.direction = this.mouseVelocity > 0 ? 1 : -1;
+                } else {
+                    this.velocity = 120;
+                }
+
+                this.isAnimating = true;
+                this.updateSpeedIndicator();
+
+                document.body.style.userSelect = "";
+                document.body.style.cursor = "";
+            }
+
+            animate() {
+                const currentTime = performance.now();
+                const deltaTime = (currentTime - this.lastTime) / 1000;
+                this.lastTime = currentTime;
+
+                if (this.isAnimating && !this.isDragging) {
+                    if (this.velocity > this.minVelocity) {
+                        this.velocity *= this.friction;
+                    } else {
+                        this.velocity = Math.max(this.minVelocity, this.velocity);
+                    }
+
+                    this.position += this.velocity * this.direction * deltaTime;
+                    this.updateCardPosition();
+                    this.updateSpeedIndicator();
+                }
+
+                this.animationFrame = requestAnimationFrame(() => this.animate());
+            }
+
+            updateCardPosition() {
+                const containerWidth = this.containerWidth;
+                const cardLineWidth = this.cardLineWidth;
+
+                if (this.position < -cardLineWidth) {
+                    this.position = containerWidth;
+                } else if (this.position > containerWidth) {
+                    this.position = -cardLineWidth;
+                }
+
+                this.cardLine.style.transform = `translateX(${this.position}px)`;
+                this.updateCardClipping();
+            }
+
+            updateSpeedIndicator() {
+                if(this.speedIndicator) {
+                    this.speedIndicator.textContent = Math.round(this.velocity);
+                }
+            }
+
+            toggleAnimation() {
+                this.isAnimating = !this.isAnimating;
+                const btn = document.querySelector(".control-btn"); // Simple query for this one-off
+                if (btn) {
+                    btn.textContent = this.isAnimating ? "⏸️ Pause" : "▶️ Play";
+                }
+
+                if (this.isAnimating) {
+                    this.cardLine.style.animation = "none";
+                }
+            }
+
+            resetPosition() {
+                this.position = this.containerWidth;
+                this.velocity = 120;
+                this.direction = -1;
+                this.isAnimating = true;
+                this.isDragging = false;
+
+                this.cardLine.style.animation = "none";
+                this.cardLine.style.transform = `translateX(${this.position}px)`;
+                this.cardLine.classList.remove("dragging");
+
+                this.updateSpeedIndicator();
+
+                const btn = document.querySelector(".control-btn"); // Simple query
+                if(btn) {
+                    btn.textContent = "⏸️ Pause";
+                }
+            }
+
+            changeDirection() {
+                this.direction *= -1;
+                this.updateSpeedIndicator();
+            }
+
+            onWheel(e) {
+                e.preventDefault();
+
+                const scrollSpeed = 20;
+                const delta = e.deltaY > 0 ? scrollSpeed : -scrollSpeed;
+
+                this.position += delta;
+                this.updateCardPosition();
+                this.updateCardClipping();
+            }
+
+            generateCode(width, height) {
+                // ... (generateCode function from JS) ...
+                const randInt = (min, max) =>
+                    Math.floor(Math.random() * (max - min + 1)) + min;
+                const pick = (arr) => arr[randInt(0, arr.length - 1)];
+
+                const header = [
+                    "// compiled preview • scanner demo",
+                    "/* generated for visual effect – not executed */",
+                    "const SCAN_WIDTH = 8;",
+                    "const FADE_ZONE = 35;",
+                    "const MAX_PARTICLES = 2500;",
+                    "const TRANSITION = 0.05;",
+                ];
+
+                const helpers = [
+                    "function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }",
+                    "function lerp(a, b, t) { return a + (b - a) * t; }",
+                    "const now = () => performance.now();",
+                    "function rng(min, max) { return Math.random() * (max - min) + min; }",
+                ];
+
+                const particleBlock = (idx) => [
+                    `class Particle${idx} {`,
+                    "  constructor(x, y, vx, vy, r, a) {",
+                    "    this.x = x; this.y = y;",
+                    "    this.vx = vx; this.vy = vy;",
+                    "    this.r = r; this.a = a;",
+                    "  }",
+                    "  step(dt) { this.x += this.vx * dt; this.y += this.vy * dt; }",
+                    "}",
+                ];
+
+                const scannerBlock = [
+                    "const scanner = {",
+                    "  x: Math.floor(window.innerWidth / 2),",
+                    "  width: SCAN_WIDTH,",
+                    "  glow: 3.5,",
+                    "};",
+                    "",
+                    "function drawParticle(ctx, p) {",
+                    "  ctx.globalAlpha = clamp(p.a, 0, 1);",
+                    "  ctx.drawImage(gradient, p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);",
+                    "}",
+                ];
+
+                const loopBlock = [
+                    "function tick(t) {",
+                    "  // requestAnimationFrame(tick);",
+                    "  const dt = 0.016;",
+                    "  // update & render",
+                    "}",
+                ];
+
+                const misc = [
+                    "const state = { intensity: 1.2, particles: MAX_PARTICLES };",
+                    "const bounds = { w: window.innerWidth, h: 300 };",
+                    "const gradient = document.createElement('canvas');",
+                    "const ctx = gradient.getContext('2d');",
+                    "ctx.globalCompositeOperation = 'lighter';",
+                    "// ascii overlay is masked with a 3-phase gradient",
+                ];
+
+                const library = [];
+                header.forEach((l) => library.push(l));
+                helpers.forEach((l) => library.push(l));
+                for (let b = 0; b < 3; b++)
+                    particleBlock(b).forEach((l) => library.push(l));
+                scannerBlock.forEach((l) => library.push(l));
+                loopBlock.forEach((l) => library.push(l));
+                misc.forEach((l) => library.push(l));
+
+                for (let i = 0; i < 40; i++) {
+                    const n1 = randInt(1, 9);
+                    const n2 = randInt(10, 99);
+                    library.push(`const v${i} = (${n1} + ${n2}) * 0.${randInt(1, 9)};`);
+                }
+                for (let i = 0; i < 20; i++) {
+                    library.push(
+                        `if (state.intensity > ${1 + (i % 3)}) { scanner.glow += 0.01; }`
+                    );
+                }
+
+                let flow = library.join(" ");
+                flow = flow.replace(/\s+/g, " ").trim();
+                const totalChars = width * height;
+                while (flow.length < totalChars + width) {
+                    const extra = pick(library).replace(/\s+/g, " ").trim();
+                    flow += " " + extra;
+                }
+
+                let out = "";
+                let offset = 0;
+                for (let row = 0; row < height; row++) {
+                    let line = flow.slice(offset, offset + width);
+                    if (line.length < width) line = line + " ".repeat(width - line.length);
+                    out += line + (row < height - 1 ? "\n" : "");
+                    offset += width;
+                }
+                return out;
+            }
+
+            calculateCodeDimensions(cardWidth, cardHeight) {
+                const fontSize = 11;
+                const lineHeight = 13;
+                const charWidth = 6;
+                const width = Math.floor(cardWidth / charWidth);
+                const height = Math.floor(cardHeight / lineHeight);
+                return { width, height, fontSize, lineHeight };
+            }
+
+            createCardWrapper(index) {
+                const wrapper = document.createElement("div");
+                wrapper.className = "card-wrapper";
+
+                const normalCard = document.createElement("div");
+                normalCard.className = "card card-normal";
+
+                const cardImages = [
+                    "https://agno.blob.core.windows.net/dream-images/Sachin.png",
+                    "https://agno.blob.core.windows.net/dream-images/Pravin.png",
+                    "https://agno.blob.core.windows.net/dream-images/sri.png",
+                    "https://agno.blob.core.windows.net/dream-images/vijay.png",
+                ];
+
+                const cardImage = document.createElement("img");
+                cardImage.className = "card-image";
+                cardImage.src = cardImages[index % cardImages.length];
+                cardImage.alt = "Credit Card";
+
+                cardImage.onerror = () => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = 400;
+                    canvas.height = 250;
+                    const ctx = canvas.getContext("2d");
+
+                    const gradient = ctx.createLinearGradient(0, 0, 400, 250);
+                    gradient.addColorStop(0, "#667eea");
+                    gradient.addColorStop(1, "#764ba2");
+
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(0, 0, 400, 250);
+
+                    cardImage.src = canvas.toDataURL();
+                };
+
+                normalCard.appendChild(cardImage);
+
+                const asciiCard = document.createElement("div");
+                asciiCard.className = "card card-ascii";
+
+                const asciiContent = document.createElement("div");
+                asciiContent.className = "ascii-content";
+
+                const { width, height, fontSize, lineHeight } =
+                    this.calculateCodeDimensions(400, 250);
+                asciiContent.style.fontSize = fontSize + "px";
+                asciiContent.style.lineHeight = lineHeight + "px";
+                asciiContent.textContent = this.generateCode(width, height);
+
+                asciiCard.appendChild(asciiContent);
+                wrapper.appendChild(normalCard);
+                wrapper.appendChild(asciiCard);
+
+                return wrapper;
+            }
+
+            updateCardClipping() {
+                const scannerX = window.innerWidth / 2;
+                const scannerWidth = 8;
+                const scannerLeft = scannerX - scannerWidth / 2;
+                const scannerRight = scannerX + scannerWidth / 2;
+                let anyScanningActive = false;
+
+                document.querySelectorAll(".card-wrapper").forEach((wrapper) => {
+                    const rect = wrapper.getBoundingClientRect();
+                    const cardLeft = rect.left;
+                    const cardRight = rect.right;
+                    const cardWidth = rect.width;
+
+                    const normalCard = wrapper.querySelector(".card-normal");
+                    const asciiCard = wrapper.querySelector(".card-ascii");
+
+                    if (cardLeft < scannerRight && cardRight > scannerLeft) {
+                        anyScanningActive = true;
+                        const scannerIntersectLeft = Math.max(scannerLeft - cardLeft, 0);
+                        const scannerIntersectRight = Math.min(
+                            scannerRight - cardLeft,
+                            cardWidth
+                        );
+
+                        const normalClipRight = (scannerIntersectLeft / cardWidth) * 100;
+                        const asciiClipLeft = (scannerIntersectRight / cardWidth) * 100;
+
+                        normalCard.style.setProperty("--clip-right", `${normalClipRight}%`);
+                        asciiCard.style.setProperty("--clip-left", `${asciiClipLeft}%`);
+
+                        if (!wrapper.hasAttribute("data-scanned") && scannerIntersectLeft > 0) {
+                            wrapper.setAttribute("data-scanned", "true");
+                            const scanEffect = document.createElement("div");
+                            scanEffect.className = "scan-effect";
+                            wrapper.appendChild(scanEffect);
+                            setTimeout(() => {
+                                if (scanEffect.parentNode) {
+                                    scanEffect.parentNode.removeChild(scanEffect);
+                                }
+                            }, 600);
+                        }
+                    } else {
+                        if (cardRight < scannerLeft) {
+                            normalCard.style.setProperty("--clip-right", "100%");
+                            asciiCard.style.setProperty("--clip-left", "100%");
+                        } else if (cardLeft > scannerRight) {
+                            normalCard.style.setProperty("--clip-right", "0%");
+                            asciiCard.style.setProperty("--clip-left", "0%");
+                        }
+                        wrapper.removeAttribute("data-scanned");
+                    }
+                });
+
+                if (window.setScannerScanning) {
+                    window.setScannerScanning(anyScanningActive);
+                }
+            }
+
+            updateAsciiContent() {
+                document.querySelectorAll(".ascii-content").forEach((content) => {
+                    if (Math.random() < 0.15) {
+                        const { width, height } = this.calculateCodeDimensions(400, 250);
+                        content.textContent = this.generateCode(width, height);
+                    }
+                });
+            }
+
+            populateCardLine() {
+                this.cardLine.innerHTML = "";
+                const cardsCount = 30;
+                for (let i = 0; i < cardsCount; i++) {
+                    const cardWrapper = this.createCardWrapper(i);
+                    this.cardLine.appendChild(cardWrapper);
+                }
+            }
+
+            startPeriodicUpdates() {
+                this.asciiInterval = setInterval(() => {
+                    this.updateAsciiContent();
+                }, 200);
+
+                const updateClipping = () => {
+                    this.updateCardClipping();
+                    this.clippingFrame = requestAnimationFrame(updateClipping);
+                };
+                updateClipping();
+            }
+
+            destroy() {
+                if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
+                if (this.clippingFrame) cancelAnimationFrame(this.clippingFrame);
+                if (this.asciiInterval) clearInterval(this.asciiInterval);
+                // TODO: Remove event listeners
+            }
+        }
+        
+        class ParticleSystem {
+            constructor(canvas) {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.particles = null;
+                this.particleCount = 400;
+                this.canvas = canvas;
+
+                this.init();
+            }
+
+            init() {
+                this.scene = new THREE.Scene();
+
+                this.camera = new THREE.OrthographicCamera(
+                    -window.innerWidth / 2,
+                    window.innerWidth / 2,
+                    125,
+                    -125,
+                    1,
+                    1000
+                );
+                this.camera.position.z = 100;
+
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: this.canvas,
+                    alpha: true,
+                    antialias: true,
+                });
+                this.renderer.setSize(window.innerWidth, 250);
+                this.renderer.setClearColor(0x000000, 0);
+
+                this.createParticles();
+
+                this.animate();
+
+                window.addEventListener("resize", () => this.onWindowResize());
+            }
+
+            createParticles() {
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(this.particleCount * 3);
+                const colors = new Float32Array(this.particleCount * 3);
+                const sizes = new Float32Array(this.particleCount);
+                const velocities = new Float32Array(this.particleCount);
+
+                const canvas = document.createElement("canvas");
+                canvas.width = 100;
+                canvas.height = 100;
+                const ctx = canvas.getContext("2d");
+
+                const half = canvas.width / 2;
+                const hue = 270; // Re-themed to purple
+
+                const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+                gradient.addColorStop(0.025, "#fff");
+                gradient.addColorStop(0.1, `hsl(${hue}, 61%, 33%)`);
+                gradient.addColorStop(0.25, `hsl(${hue}, 64%, 6%)`);
+                gradient.addColorStop(1, "transparent");
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(half, half, half, 0, Math.PI * 2);
+                ctx.fill();
+
+                const texture = new THREE.CanvasTexture(canvas);
+
+                for (let i = 0; i < this.particleCount; i++) {
+                    positions[i * 3] = (Math.random() - 0.5) * window.innerWidth * 2;
+                    positions[i * 3 + 1] = (Math.random() - 0.5) * 250;
+                    positions[i * 3 + 2] = 0;
+
+                    colors[i * 3] = 1;
+                    colors[i * 3 + 1] = 1;
+                    colors[i * 3 + 2] = 1;
+
+                    const orbitRadius = Math.random() * 200 + 100;
+                    sizes[i] = (Math.random() * (orbitRadius - 60) + 60) / 8;
+
+                    velocities[i] = Math.random() * 60 + 30;
+                }
+
+                geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+
+                this.velocities = velocities;
+
+                const alphas = new Float32Array(this.particleCount);
+                for (let i = 0; i < this.particleCount; i++) {
+                    alphas[i] = (Math.random() * 8 + 2) / 10;
+                }
+                geometry.setAttribute("alpha", new THREE.BufferAttribute(alphas, 1));
+                this.alphas = alphas;
+
+                const material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        pointTexture: { value: texture },
+                        size: { value: 15.0 },
+                    },
+                    vertexShader: `
+                        attribute float alpha;
+                        varying float vAlpha;
+                        varying vec3 vColor;
+                        uniform float size;
+                        
+                        void main() {
+                            vAlpha = alpha;
+                            vColor = color;
+                            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                            gl_PointSize = size;
+                            gl_Position = projectionMatrix * mvPosition;
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform sampler2D pointTexture;
+                        varying float vAlpha;
+                        varying vec3 vColor;
+                        
+                        void main() {
+                            gl_FragColor = vec4(vColor, vAlpha) * texture2D(pointTexture, gl_PointCoord);
+                        }
+                    `,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    vertexColors: true,
+                });
+
+                this.particles = new THREE.Points(geometry, material);
+                this.scene.add(this.particles);
+            }
+
+            animate() {
+                this.animationId = requestAnimationFrame(() => this.animate());
+
+                if (this.particles) {
+                    const positions = this.particles.geometry.attributes.position.array;
+                    const alphas = this.particles.geometry.attributes.alpha.array;
+                    const time = Date.now() * 0.001;
+
+                    for (let i = 0; i < this.particleCount; i++) {
+                        positions[i * 3] += this.velocities[i] * 0.016;
+
+                        if (positions[i * 3] > window.innerWidth / 2 + 100) {
+                            positions[i * 3] = -window.innerWidth / 2 - 100;
+                            positions[i * 3 + 1] = (Math.random() - 0.5) * 250;
+                        }
+
+                        positions[i * 3 + 1] += Math.sin(time + i * 0.1) * 0.5;
+
+                        const twinkle = Math.floor(Math.random() * 10);
+                        if (twinkle === 1 && alphas[i] > 0) {
+                            alphas[i] -= 0.05;
+                        } else if (twinkle === 2 && alphas[i] < 1) {
+                            alphas[i] += 0.05;
+                        }
+
+                        alphas[i] = Math.max(0, Math.min(1, alphas[i]));
+                    }
+
+                    this.particles.geometry.attributes.position.needsUpdate = true;
+                    this.particles.geometry.attributes.alpha.needsUpdate = true;
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onWindowResize() {
+                this.camera.left = -window.innerWidth / 2;
+                this.camera.right = window.innerWidth / 2;
+                this.camera.updateProjectionMatrix();
+
+                this.renderer.setSize(window.innerWidth, 250);
+            }
+
+            destroy() {
+                if(this.animationId) cancelAnimationFrame(this.animationId);
+                if (this.renderer) {
+                    this.renderer.dispose();
+                }
+                if (this.particles) {
+                    this.scene.remove(this.particles);
+                    this.particles.geometry.dispose();
+                    this.particles.material.dispose();
+                }
+            }
+        }
+
+        class ParticleScanner {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = this.canvas.getContext("2d");
+                this.animationId = null;
+
+                this.w = window.innerWidth;
+                this.h = 300;
+                this.particles = [];
+                this.count = 0;
+                this.maxParticles = 800;
+                this.intensity = 0.8;
+                this.lightBarX = this.w / 2;
+                this.lightBarWidth = 3;
+                this.fadeZone = 60;
+
+                this.scanTargetIntensity = 1.8;
+                this.scanTargetParticles = 2500;
+                this.scanTargetFadeZone = 35;
+
+                this.scanningActive = false;
+
+                this.baseIntensity = this.intensity;
+                this.baseMaxParticles = this.maxParticles;
+                this.baseFadeZone = this.fadeZone;
+
+                this.currentIntensity = this.intensity;
+                this.currentMaxParticles = this.maxParticles;
+                this.currentFadeZone = this.fadeZone;
+                this.transitionSpeed = 0.05;
+
+                this.setupCanvas();
+                this.createGradientCache();
+                this.initParticles();
+                this.animate();
+
+                window.addEventListener("resize", () => this.onResize());
+            }
+
+            setupCanvas() {
+                this.canvas.width = this.w;
+                this.canvas.height = this.h;
+                this.canvas.style.width = this.w + "px";
+                this.canvas.style.height = this.h + "px";
+                this.ctx.clearRect(0, 0, this.w, this.h);
+            }
+
+            onResize() {
+                this.w = window.innerWidth;
+                this.lightBarX = this.w / 2;
+                this.setupCanvas();
+            }
+
+            createGradientCache() {
+                this.gradientCanvas = document.createElement("canvas");
+                this.gradientCtx = this.gradientCanvas.getContext("2d");
+                this.gradientCanvas.width = 16;
+                this.gradientCanvas.height = 16;
+
+                const half = this.gradientCanvas.width / 2;
+                const gradient = this.gradientCtx.createRadialGradient(
+                    half,
+                    half,
+                    0,
+                    half,
+                    half,
+                    half
+                );
+                gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
+                gradient.addColorStop(0.3, "rgba(196, 181, 253, 0.8)"); // light purple
+                gradient.addColorStop(0.7, "rgba(139, 92, 246, 0.4)"); // purple
+                gradient.addColorStop(1, "transparent");
+
+                this.gradientCtx.fillStyle = gradient;
+                this.gradientCtx.beginPath();
+                this.gradientCtx.arc(half, half, half, 0, Math.PI * 2);
+                this.gradientCtx.fill();
+            }
+
+            random(min, max) {
+                if (arguments.length < 2) {
+                    max = min;
+                    min = 0;
+                }
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            randomFloat(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            createParticle() {
+                const intensityRatio = this.intensity / this.baseIntensity;
+                const speedMultiplier = 1 + (intensityRatio - 1) * 1.2;
+                const sizeMultiplier = 1 + (intensityRatio - 1) * 0.7;
+
+                return {
+                    x:
+                        this.lightBarX +
+                        this.randomFloat(-this.lightBarWidth / 2, this.lightBarWidth / 2),
+                    y: this.randomFloat(0, this.h),
+
+                    vx: this.randomFloat(0.2, 1.0) * speedMultiplier,
+                    vy: this.randomFloat(-0.15, 0.15) * speedMultiplier,
+
+                    radius: this.randomFloat(0.4, 1) * sizeMultiplier,
+                    alpha: this.randomFloat(0.6, 1),
+                    decay: this.randomFloat(0.005, 0.025) * (2 - intensityRatio * 0.5),
+                    originalAlpha: 0,
+                    life: 1.0,
+                    time: 0,
+                    startX: 0,
+
+                    twinkleSpeed: this.randomFloat(0.02, 0.08) * speedMultiplier,
+                    twinkleAmount: this.randomFloat(0.1, 0.25),
+                };
+            }
+
+            initParticles() {
+                for (let i = 0; i < this.maxParticles; i++) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+            }
+
+            updateParticle(particle) {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.time++;
+
+                particle.alpha =
+                    particle.originalAlpha * particle.life +
+                    Math.sin(particle.time * particle.twinkleSpeed) * particle.twinkleAmount;
+
+                particle.life -= particle.decay;
+
+                if (particle.x > this.w + 10 || particle.life <= 0) {
+                    this.resetParticle(particle);
+                }
+            }
+
+            resetParticle(particle) {
+                particle.x =
+                    this.lightBarX +
+                    this.randomFloat(-this.lightBarWidth / 2, this.lightBarWidth / 2);
+                particle.y = this.randomFloat(0, this.h);
+                particle.vx = this.randomFloat(0.2, 1.0);
+                particle.vy = this.randomFloat(-0.15, 0.15);
+                particle.alpha = this.randomFloat(0.6, 1);
+                particle.originalAlpha = particle.alpha;
+                particle.life = 1.0;
+                particle.time = 0;
+                particle.startX = particle.x;
+            }
+
+            drawParticle(particle) {
+                if (particle.life <= 0) return;
+
+                let fadeAlpha = 1;
+
+                if (particle.y < this.fadeZone) {
+                    fadeAlpha = particle.y / this.fadeZone;
+                } else if (particle.y > this.h - this.fadeZone) {
+                    fadeAlpha = (this.h - particle.y) / this.fadeZone;
+                }
+
+                fadeAlpha = Math.max(0, Math.min(1, fadeAlpha));
+
+                this.ctx.globalAlpha = particle.alpha * fadeAlpha;
+                this.ctx.drawImage(
+                    this.gradientCanvas,
+                    particle.x - particle.radius,
+                    particle.y - particle.radius,
+                    particle.radius * 2,
+                    particle.radius * 2
+                );
+            }
+
+            drawLightBar() {
+                const verticalGradient = this.ctx.createLinearGradient(0, 0, 0, this.h);
+                verticalGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+                verticalGradient.addColorStop(
+                    this.fadeZone / this.h,
+                    "rgba(255, 255, 255, 1)"
+                );
+                verticalGradient.addColorStop(
+                    1 - this.fadeZone / this.h,
+                    "rgba(255, 255, 255, 1)"
+                );
+                verticalGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+                this.ctx.globalCompositeOperation = "lighter";
+
+                const targetGlowIntensity = this.scanningActive ? 3.5 : 1;
+
+                if (!this.currentGlowIntensity) this.currentGlowIntensity = 1;
+
+                this.currentGlowIntensity +=
+                    (targetGlowIntensity - this.currentGlowIntensity) * this.transitionSpeed;
+
+                const glowIntensity = this.currentGlowIntensity;
+                const lineWidth = this.lightBarWidth;
+                const glow1Alpha = this.scanningActive ? 1.0 : 0.8;
+                const glow2Alpha = this.scanningActive ? 0.8 : 0.6;
+                const glow3Alpha = this.scanningActive ? 0.6 : 0.4;
+
+                const coreGradient = this.ctx.createLinearGradient(
+                    this.lightBarX - lineWidth / 2,
+                    0,
+                    this.lightBarX + lineWidth / 2,
+                    0
+                );
+                coreGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+                coreGradient.addColorStop(
+                    0.3,
+                    `rgba(255, 255, 255, ${0.9 * glowIntensity})`
+                );
+                coreGradient.addColorStop(0.5, `rgba(255, 255, 255, ${1 * glowIntensity})`);
+                coreGradient.addColorStop(
+                    0.7,
+                    `rgba(255, 255, 255, ${0.9 * glowIntensity})`
+                );
+                coreGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+                this.ctx.globalAlpha = 1;
+                this.ctx.fillStyle = coreGradient;
+
+                const radius = 15;
+                this.ctx.beginPath();
+                this.ctx.roundRect(
+                    this.lightBarX - lineWidth / 2,
+                    0,
+                    lineWidth,
+                    this.h,
+                    radius
+                );
+                this.ctx.fill();
+
+                const glow1Gradient = this.ctx.createLinearGradient(
+                    this.lightBarX - lineWidth * 2,
+                    0,
+                    this.lightBarX + lineWidth * 2,
+                    0
+                );
+                glow1Gradient.addColorStop(0, "rgba(139, 92, 246, 0)");
+                glow1Gradient.addColorStop(
+                    0.5,
+                    `rgba(196, 181, 253, ${0.8 * glowIntensity})`
+                );
+                glow1Gradient.addColorStop(1, "rgba(139, 92, 246, 0)");
+
+                this.ctx.globalAlpha = glow1Alpha;
+                this.ctx.fillStyle = glow1Gradient;
+
+                const glow1Radius = 25;
+                this.ctx.beginPath();
+                this.ctx.roundRect(
+                    this.lightBarX - lineWidth * 2,
+                    0,
+                    lineWidth * 4,
+                    this.h,
+                    glow1Radius
+                );
+                this.ctx.fill();
+
+                const glow2Gradient = this.ctx.createLinearGradient(
+                    this.lightBarX - lineWidth * 4,
+                    0,
+                    this.lightBarX + lineWidth * 4,
+                    0
+                );
+                glow2Gradient.addColorStop(0, "rgba(139, 92, 246, 0)");
+                glow2Gradient.addColorStop(
+                    0.5,
+                    `rgba(139, 92, 246, ${0.4 * glowIntensity})`
+                );
+                glow2Gradient.addColorStop(1, "rgba(139, 92, 246, 0)");
+
+                this.ctx.globalAlpha = glow2Alpha;
+                this.ctx.fillStyle = glow2Gradient;
+
+                const glow2Radius = 35;
+                this.ctx.beginPath();
+                this.ctx.roundRect(
+                    this.lightBarX - lineWidth * 4,
+                    0,
+                    lineWidth * 8,
+                    this.h,
+                    glow2Radius
+                );
+                this.ctx.fill();
+
+                if (this.scanningActive) {
+                    const glow3Gradient = this.ctx.createLinearGradient(
+                        this.lightBarX - lineWidth * 8,
+                        0,
+                        this.lightBarX + lineWidth * 8,
+                        0
+                    );
+                    glow3Gradient.addColorStop(0, "rgba(139, 92, 246, 0)");
+                    glow3Gradient.addColorStop(0.5, "rgba(139, 92, 246, 0.2)");
+                    glow3Gradient.addColorStop(1, "rgba(139, 92, 246, 0)");
+
+                    this.ctx.globalAlpha = glow3Alpha;
+                    this.ctx.fillStyle = glow3Gradient;
+
+                    const glow3Radius = 45;
+                    this.ctx.beginPath();
+                    this.ctx.roundRect(
+                        this.lightBarX - lineWidth * 8,
+                        0,
+                        lineWidth * 16,
+                        this.h,
+                        glow3Radius
+                    );
+                    this.ctx.fill();
+                }
+
+                this.ctx.globalCompositeOperation = "destination-in";
+                this.ctx.globalAlpha = 1;
+                this.ctx.fillStyle = verticalGradient;
+                this.ctx.fillRect(0, 0, this.w, this.h);
+            }
+
+            render() {
+                const targetIntensity = this.scanningActive
+                    ? this.scanTargetIntensity
+                    : this.baseIntensity;
+                const targetMaxParticles = this.scanningActive
+                    ? this.scanTargetParticles
+                    : this.baseMaxParticles;
+                const targetFadeZone = this.scanningActive
+                    ? this.scanTargetFadeZone
+                    : this.baseFadeZone;
+
+                this.currentIntensity +=
+                    (targetIntensity - this.currentIntensity) * this.transitionSpeed;
+                this.currentMaxParticles +=
+                    (targetMaxParticles - this.currentMaxParticles) * this.transitionSpeed;
+                this.currentFadeZone +=
+                    (targetFadeZone - this.currentFadeZone) * this.transitionSpeed;
+
+                this.intensity = this.currentIntensity;
+                this.maxParticles = Math.floor(this.currentMaxParticles);
+                this.fadeZone = this.currentFadeZone;
+
+                this.ctx.globalCompositeOperation = "source-over";
+                this.ctx.clearRect(0, 0, this.w, this.h);
+
+                this.drawLightBar();
+
+                this.ctx.globalCompositeOperation = "lighter";
+                for (let i = 1; i <= this.count; i++) {
+                    if (this.particles[i]) {
+                        this.updateParticle(this.particles[i]);
+                        this.drawParticle(this.particles[i]);
+                    }
+                }
+
+                const currentIntensity = this.intensity;
+                const currentMaxParticles = this.maxParticles;
+                
+                // <<< FIX 1: Defined intensityRatio here
+                const intensityRatio = this.intensity / this.baseIntensity;
+
+                if (Math.random() < currentIntensity && this.count < currentMaxParticles) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+
+                // ... (rest of particle generation logic) ...
+                if (intensityRatio > 1.1 && Math.random() < (intensityRatio - 1.0) * 1.2) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+
+                if (intensityRatio > 1.3 && Math.random() < (intensityRatio - 1.3) * 1.4) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+
+                if (intensityRatio > 1.5 && Math.random() < (intensityRatio - 1.5) * 1.8) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+
+                if (intensityRatio > 2.0 && Math.random() < (intensityRatio - 2.0) * 2.0) {
+                    const particle = this.createParticle();
+                    particle.originalAlpha = particle.alpha;
+                    particle.startX = particle.x;
+                    this.count++;
+                    this.particles[this.count] = particle;
+                }
+
+
+                if (this.count > currentMaxParticles + 200) {
+                    const excessCount = Math.min(15, this.count - currentMaxParticles);
+                    for (let i = 0; i < excessCount; i++) {
+                        delete this.particles[this.count - i];
+                    }
+                    this.count -= excessCount;
+                }
+            }
+
+            animate() {
+                this.render();
+                this.animationId = requestAnimationFrame(() => this.animate());
+            }
+
+            startScanning() {
+                this.scanningActive = true;
+            }
+
+            stopScanning() {
+                this.scanningActive = false;
+            }
+
+            setScanningActive(active) {
+                this.scanningActive = active;
+            }
+
+            getStats() {
+                return {
+                    intensity: this.intensity,
+                    maxParticles: this.maxParticles,
+                    currentParticles: this.count,
+                    lightBarWidth: this.lightBarWidth,
+                    fadeZone: this.fadeZone,
+                    scanningActive: this.scanningActive,
+                    canvasWidth: this.w,
+                    canvasHeight: this.h,
+                };
+            }
+
+            destroy() {
+                if (this.animationId) {
+                    cancelAnimationFrame(this.animationId);
+                }
+                this.particles = [];
+                this.count = 0;
+            }
+        }
+        
+        // --- Initialization ---
+        
+        // Ensure all refs are current before initializing
+        if (
+            cardStreamRef.current &&
+            cardLineRef.current &&
+            // REMOVED speedValueRef.current check
+            particleCanvasRef.current &&
+            scannerCanvasRef.current
+        ) {
+            const cardStream = new CardStreamController(
+                cardStreamRef.current,
+                cardLineRef.current,
+                null // PASSED null for speedIndicator
+            );
+            cardStreamInstanceRef.current = cardStream;
+
+            const particleSystem = new ParticleSystem(particleCanvasRef.current);
+            particleSystemInstanceRef.current = particleSystem;
+
+            const particleScanner = new ParticleScanner(scannerCanvasRef.current);
+            particleScannerInstanceRef.current = particleScanner;
+
+            window.setScannerScanning = (active) => {
+                if (particleScanner) {
+                    particleScanner.setScanningActive(active);
+                }
+            };
+
+            window.getScannerStats = () => {
+                if (particleScanner) {
+                    return particleScanner.getStats();
+                }
+                return null;
+            };
+            
+            // Cleanup function
+            return () => {
+                cardStream.destroy();
+                particleSystem.destroy();
+                particleScanner.destroy();
+                delete window.setScannerScanning;
+                delete window.getScannerStats;
+            };
+        }
+
+    }, []); // Empty dependency array to run only once on mount
+
+    return (
+        <section className="card-stream-section">
+            <SectionHeader
+                title="Meet our team"
+                subtitle="Don’t just use SAYANA — meet the people who make it possible. The passionate team driving intelligence, creativity, and innovation forward."
+            />
+
+            {/* REMOVED controls and speed-indicator divs */}
+
+            <div className="card-stream-container" ref={cardStreamContainerRef}>
+                <canvas id="particleCanvas" ref={particleCanvasRef}></canvas>
+                <canvas id="scannerCanvas" ref={scannerCanvasRef}></canvas>
+
+                <div className="scanner"></div>
+
+                <div className="card-stream" id="cardStream" ref={cardStreamRef}>
+                    <div className="card-line" id="cardLine" ref={cardLineRef}></div>
+                </div>
+            </div>
+
+            {/* REMOVED Inspiration Credit div */}
+        </section>
+    );
+};
+
+
+// --- OLD TESTIMONIALS SECTION (REPLACED) ---
+/*
 const TestimonialCard = ({ name, role, quote, stars }) => (
   <motion.div
-    className="flex-shrink-0 w-[300px] sm:w-[350px] p-8 rounded-3xl bg-white/60 shadow-xl shadow-green-300/20 backdrop-blur-lg"
-    // variants, initial, whileInView, and viewport props removed
+    className="flex-shrink-0 w-[300px] sm:w-[350px] p-8 rounded-3xl bg-white/5 backdrop-blur-md shadow-lg shadow-black/20 border border-white/10"
   >
     <div className="flex mb-4">
       {[...Array(stars)].map((_, i) => (
         <StarIcon key={i} className="w-5 h-5 text-yellow-400" />
       ))}
     </div>
-    <p className="text-lg text-[#603B2A] mb-6 italic">"{quote}"</p>
+    <p className="text-lg text-white mb-6 italic">"{quote}"</p>
     <div>
-      <h4 className="text-lg font-bold text-[#4a2e1f]">{name}</h4>
-      <p className="text-sm text-[#603B2A]/70">{role}</p>
+      <h4 className="text-lg font-bold text-white">{name}</h4>
+      <p className="text-sm text-white/70">{role}</p>
     </div>
   </motion.div>
 );
 
-/**
- * TestimonialsSection: New section with scrolling user testimonials.
- */
 const TestimonialsSection = () => {
   return (
     <section className="w-full max-w-7xl mx-auto px-6 pt-24 sm:px-10 overflow-hidden">
@@ -545,16 +2511,16 @@ const TestimonialsSection = () => {
       />
       <motion.div className="w-full">
         <motion.div
-          className="flex gap-8 pb-8" // Removed overflow-x-auto py-4
-          animate={{ x: ["0%", "-50%"] }} // Added animate
-          transition={{ // Added transition
+          className="flex gap-8 pb-8"
+          animate={{ x: ["0%", "-50%"] }}
+          transition={{
             duration: 40,
             ease: "linear",
             repeat: Infinity,
-            repeatType: "mirror" // UPDATED from loop to mirror
+            repeatType: "mirror"
           }}
         >
-          {[...testimonials, ...testimonials].map((testimonial, index) => ( // Added duplication
+          {[...testimonials, ...testimonials].map((testimonial, index) => (
             <TestimonialCard key={index} {...testimonial} />
           ))}
         </motion.div>
@@ -562,12 +2528,10 @@ const TestimonialsSection = () => {
     </section>
   );
 };
+*/
 
-/**
- * MissionSection: New section for the company's mission.
- */
 const MissionSection = () => (
-  <section className="w-full bg-green-100/30 mt-24 py-24">
+  <section className="w-full bg-transparent mt-24 py-24">
     <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 grid md:grid-cols-2 gap-12 items-center">
       <motion.div
         initial="hidden"
@@ -575,12 +2539,12 @@ const MissionSection = () => (
         viewport={{ once: true, amount: 0.3 }}
         variants={fadeIn}
       >
-        <h2 className="text-4xl sm:text-5xl font-extrabold text-[#4a2e1f] mb-6">Our Mission</h2>
-        <p className="text-lg text-[#603B2A]/80 mb-4">
-          At SAYANA, our mission is to build a world where every voice, whether spoken, signed, or expressed, is heard and understood. We believe in the power of technology to break down barriers, not build new ones.
+        <h2 className="text-4xl sm:text-5xl font-extrabold text-white mb-6">Our Mission</h2>
+        <p className="text-lg text-white/80 mb-4">
+          At SAYANA, our mission is to build a world where every voice, whether spoken, signed, or expressed, is heard and understood. We believe in the power of technology to break down barriers.
         </p>
-        <p className="text-lg text-[#603B2A]/80">
-          We are committed to creating empathetic, accessible, and secure tools that empower the deaf and mute communities, fostering deeper connections and enabling universal communication. Silence speaks, and we're here to translate.
+        <p className="text-lg text-white/80">
+          We are committed to creating empathetic, accessible, and secure tools that empower the deaf and mute communities. Silence speaks, and we're here to translate.
         </p>
       </motion.div>
       <motion.div
@@ -590,33 +2554,30 @@ const MissionSection = () => (
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.6 }}
       >
-        <HandSignIcon type="love" className="w-48 h-48 sm:w-64 sm:h-64 text-[#603B2A]/60" />
+        <HandSignIcon type="love" className="w-48 h-48 sm:w-64 sm:h-64 text-white/60" />
       </motion.div>
     </div>
   </section>
 );
 
-/**
- * FAQItem: An accordion item for the FAQ section.
- */
 const FAQItem = ({ question, answer }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <motion.div
-      className="border-b border-green-200/50"
+      className="faq-card"
       variants={fadeIn}
     >
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex justify-between items-center w-full py-6 text-left"
+        className="faq-question-btn"
       >
-        <h3 className="text-lg font-semibold text-[#4a2e1f]">{question}</h3>
+        <h3 className="text-lg font-semibold">{question}</h3>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ duration: 0.3 }}
         >
-          <ChevronDownIcon className="w-6 h-6 text-[#603B2A]/70" />
+          <ChevronDownIcon className="w-6 h-6 text-white/70" />
         </motion.div>
       </button>
       <AnimatePresence>
@@ -626,9 +2587,9 @@ const FAQItem = ({ question, answer }) => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
-            className="overflow-hidden"
+            className="overflow-hidden mt-4"
           >
-            <p className="pb-6 text-[#603B2A]/80">{answer}</p>
+            <p className="text-white/80">{answer}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -636,9 +2597,6 @@ const FAQItem = ({ question, answer }) => {
   );
 };
 
-/**
- * FAQSection: New section for frequently asked questions.
- */
 const FAQSection = () => (
   <section className="w-full max-w-4xl mx-auto px-6 pt-24 sm:px-10">
     <SectionHeader
@@ -658,11 +2616,8 @@ const FAQSection = () => (
   </section>
 );
 
-/* CTASection removed — authentication will be provided separately. */
+// CTASection removed per request (Ready to Start section not needed)
 
-/**
- * Chatbot: Floating chat component.
- */
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -686,62 +2641,50 @@ const Chatbot = () => {
     setInput("");
     setIsLoading(true);
 
-    const systemPrompt = "You are 'Sayan,' the friendly and helpful chatbot for SAYANA. SAYANA is an application that empowers deaf and mute users through AI-powered emotion detection, real-time sign language translation, secure conversations, and multilingual support. Your *only* job is to answer questions about SAYANA's features, accessibility, technology, and mission. Be empathetic, clear, and concise. **Strictly refuse to answer any questions or engage in any conversation that is not about SAYANA.** If asked about anything else, politely redirect the user back to SAYANA's features. For example: 'I'm here to help with any questions you have about SAYANA. How can I tell you more about our AI translation features?'";
-    
-    const userQuery = input;
-    const apiKey = ""; // API key is handled by the environment
-    const apiUrl = `https://generativelaanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      const systemPrompt = "You are 'Sayan,' the friendly and helpful chatbot for SAYANA. SAYANA is an application that empowers deaf and mute users through AI-powered emotion detection, real-time sign language translation, secure conversations, and multilingual support. Your *only* job is to answer questions about SAYANA's features, accessibility, technology, and mission. Be empathetic, clear, and concise. **Strictly refuse to answer any questions or engage in any conversation that is not about SAYANA.** If asked about anything else, politely redirect the user back to SAYANA's features. For example: 'I'm here to help with any questions you have about SAYANA. How can I tell you more about our AI translation features?'";
 
-    const payload = {
-        contents: [
-          // Build a minimal history to keep context
-          ...messages.slice(-4).map(msg => ({
-            role: msg.from === 'bot' ? 'model' : 'user',
-            parts: [{ text: msg.text }]
-          })),
-          { role: 'user', parts: [{ text: userQuery }] }
-        ],
-        systemInstruction: {
-            parts: [{ text: systemPrompt }]
-        },
-    };
+      const userQuery = input;
+      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+      const token = localStorage.getItem('token');
+      const endpoint = token ? `${API_BASE}/api/agent/query` : `${API_BASE}/api/agent/query/public`;
 
-    try {
-        const result = await fetchWithBackoff(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+      const payload = {
+        prompt: userQuery,
+        history: messages.slice(-8),
+        systemPrompt,
+      };
+
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const result = await fetchWithBackoff(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
         });
 
-        const candidate = result?.candidates?.[0];
-        if (candidate && candidate.content?.parts?.[0]?.text) {
-            const botResponse = { from: 'bot', text: candidate.content.parts[0].text };
-            setMessages(prev => [...prev, botResponse]);
+        // Accept several possible response shapes from the backend proxy
+        const botText = result?.text || result?.reply || result?.message || result?.output || result?.outputText || (result?.candidates?.[0]?.content?.parts?.[0]?.text) || null;
+        if (botText) {
+          setMessages(prev => [...prev, { from: 'bot', text: botText }]);
         } else {
-            console.error("API response missing content:", result);
-            const errorResponse = { from: 'bot', text: "Sorry, I'm having a little trouble. Could you try asking that again?" };
-            setMessages(prev => [...prev, errorResponse]);
+          console.error('Unexpected agent response:', result);
+          setMessages(prev => [...prev, { from: 'bot', text: "Sorry, I'm having a little trouble. Could you try asking that again?" }]);
         }
-    } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        const errorResponse = { from: 'bot', text: "I seem to be having connection issues. Please try again in a moment." };
-        setMessages(prev => [...prev, errorResponse]);
-    } finally {
+      } catch (error) {
+        console.error('Error calling agent proxy:', error);
+        setMessages(prev => [...prev, { from: 'bot', text: "I seem to be having connection issues. Please try again in a moment." }]);
+      } finally {
         setIsLoading(false);
-    }
-  };
-
-  // animation variants for messages
-  const messageVariants = {
-    hidden: { opacity: 0, y: 8, scale: 0.98 },
-    visible: { opacity: 1, y: 0, scale: 1 }
+      }
   };
 
   return (
     <>
       {/* Chat Bubble */}
       <motion.button
-        className="fixed z-50 bottom-8 right-8 w-16 h-16 rounded-full bg-[#603B2A] text-white shadow-lg flex items-center justify-center"
+        className="fixed z-50 bottom-8 right-8 w-16 h-16 rounded-full bg-purple-600 text-white shadow-lg flex items-center justify-center"
         onClick={() => setIsOpen(true)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
@@ -756,112 +2699,71 @@ const Chatbot = () => {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            className="fixed z-50 bottom-28 right-8 w-full max-w-md h-[70vh] max-h-[600px] bg-white rounded-3xl shadow-xl flex flex-col overflow-hidden"
+            className="fixed z-50 bottom-28 right-8 w-full max-w-md h-[70vh] max-h-[600px] bg-gray-900 rounded-3xl shadow-xl flex flex-col overflow-hidden border border-white/10"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
           >
             {/* Header */}
-            <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-green-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-xl">
-                  <span role="img" aria-label="ai">🤖</span>
-                </div>
-                <div>
-                  <div className="text-lg font-bold text-[#4a2e1f]">SAYANA</div>
-                  <div className="text-sm text-[#4a2e1f]/70">Assistant</div>
-                  <div className="mt-1 flex items-center text-sm text-[#4a2e1f]/70">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-400 mr-2" aria-hidden></span>
-                    <span className="font-semibold text-[#2f6f45]">ONLINE</span>
-                  </div>
-                </div>
-              </div>
+            <div className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800">
+              <h3 className="text-xl font-bold text-white">Chat with Sayan</h3>
               <button
                 onClick={() => setIsOpen(false)}
-                aria-label="Close chat"
-                title="Close"
-                className="text-[#4a2e1f] hover:text-[#603B2A] bg-white/60 rounded-full p-2 shadow-sm"
+                className="text-gray-400 hover:text-gray-200"
               >
-                <CloseIcon className="w-5 h-5" />
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
 
             {/* Messages */}
             <div className="flex-1 p-4 overflow-y-auto space-y-4">
               {messages.map((msg, index) => (
-                <motion.div
-                  key={index}
-                  initial="hidden"
-                  animate="visible"
-                  variants={messageVariants}
-                  transition={{ duration: 0.18, delay: index * 0.02 }}
-                  className={`flex items-end ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {msg.from === 'bot' && (
-                    <div className="mr-3 flex-shrink-0 text-lg">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-[#4a2e1f] font-semibold">🤖</div>
-                    </div>
-                  )}
-
+                <div key={index} className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
-                    className={`max-w-[75%] px-4 py-3 rounded-2xl shadow-sm transition-transform hover:scale-[1.01] ${
+                    className={`max-w-xs px-4 py-3 rounded-2xl ${
                       msg.from === 'user'
-                        ? 'bg-[#603B2A] text-white rounded-br-lg rounded-tl-lg'
-                        : 'bg-green-50 text-neutral-800 rounded-bl-lg rounded-tr-lg'
+                        ? 'bg-purple-600 text-white rounded-br-lg'
+                        : 'bg-gray-700 text-gray-200 rounded-bl-lg'
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{msg.text}</p>
                   </div>
-
-                  {msg.from === 'user' && (
-                    <div className="ml-3 flex-shrink-0 text-lg">
-                      <div className="w-8 h-8 rounded-full bg-[#603B2A] flex items-center justify-center text-white">👤</div>
-                    </div>
-                  )}
-                </motion.div>
+                </div>
               ))}
-
               {isLoading && (
-                <motion.div className="flex items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  <div className="mr-3 flex-shrink-0">
-                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-[#4a2e1f] font-semibold">S</div>
-                  </div>
-                  <div className="max-w-xs px-4 py-3 rounded-2xl bg-green-50 text-neutral-800 rounded-bl-lg">
+                <div className="flex justify-start">
+                  <div className="max-w-xs px-4 py-3 rounded-2xl bg-gray-700 text-gray-200 rounded-bl-lg">
                     <div className="flex items-center gap-2">
-                      <motion.div className="w-2 h-2 bg-green-300 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.9, delay: 0 }} />
-                      <motion.div className="w-2 h-2 bg-green-300 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.9, delay: 0.15 }} />
-                      <motion.div className="w-2 h-2 bg-green-300 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ repeat: Infinity, duration: 0.9, delay: 0.3 }} />
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
                     </div>
                   </div>
-                </motion.div>
+                </div>
               )}
-
               <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-gray-200 bg-white">
-              <div className="flex gap-2 items-center flex-nowrap">
+            <div className="p-4 border-t border-gray-700 bg-gray-900">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleSend()}
                   placeholder="Ask about SAYANA..."
-                  className="flex-1 min-w-0 px-4 py-3 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#603B2A]/50"
+                  className="flex-1 px-4 py-3 rounded-full border border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500/50 bg-gray-800 text-white"
                   disabled={isLoading}
                 />
                 <motion.button
-                  type="button"
                   onClick={handleSend}
                   disabled={isLoading || !input.trim()}
-                  className="w-12 h-12 rounded-full bg-[#cbb9b0] text-white flex items-center justify-center disabled:opacity-50 border border-[#bfae9f] shadow-sm hover:shadow-md"
-                  title="Send message"
-                  aria-label="Send message"
-                  whileHover={{ scale: isLoading ? 1 : 1.06 }}
-                  whileTap={{ scale: isLoading ? 1 : 0.95 }}
+                  className="w-12 h-12 rounded-full bg-purple-600 text-white flex items-center justify-center disabled:opacity-50"
+                  whileHover={{ scale: isLoading ? 1 : 1.1 }}
+                  whileTap={{ scale: isLoading ? 1 : 0.9 }}
                 >
-                  <SendIcon className="w-5 h-5 text-white" />
+                  <SendIcon className="w-5 h-5" />
                 </motion.button>
               </div>
             </div>
@@ -872,34 +2774,8 @@ const Chatbot = () => {
   );
 };
 
-
-// --- Main App Component ---
-
-export default function App() {
-  const mainRef = useRef(null);
-
-  const handleMouseMove = (e) => {
-    if (mainRef.current) {
-      const { clientX, clientY } = e;
-      const { offsetLeft, offsetTop } = mainRef.current;
-      mainRef.current.style.setProperty('--x', `${clientX - offsetLeft}px`);
-      mainRef.current.style.setProperty('--y', `${clientY - offsetTop}px`);
-    }
-  };
-
-  // --- Button Click Handlers ---
-
-  // Navigate to authentication page (signin / signup). The real auth pages
-  // will be provided later; we use a simple client-side redirect to `/auth`.
-  const handleGetStarted = () => {
-    // If we're inside a Router, prefer client-side navigation.
-    try {
-      navigate('/auth');
-    } catch (e) {
-      window.location.href = '/auth';
-    }
-  };
-
+// --- Sayana Content Component ---
+const SayanaContent = () => {
   const navigate = useNavigate();
 
   const handleScrollTo = (id) => {
@@ -913,28 +2789,15 @@ export default function App() {
   };
 
   return (
-    <Routes>
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/" element={(
-        <div
-      ref={mainRef}
-      onMouseMove={handleMouseMove}
-      className="relative min-h-screen w-full overflow-hidden bg-gradient-to-br from-green-50 via-green-100 to-green-50 font-sans text-neutral-800"
+    <div
+      className="absolute top-0 left-0 z-10 w-full h-full overflow-y-auto font-sans text-white"
     >
-      {/* Background Glowing Wave (Cursor Effect) */}
-      <div
-        className="pointer-events-none fixed inset-0 z-0 transition-all duration-500"
-        style={{
-          background: 'radial-gradient(600px circle at var(--x, 50%) var(--y, 50%), rgba(134, 239, 172, 0.1), transparent 40%)'
-        }}
-      />
-
       {/* Background Floating Icons */}
       <div className="absolute inset-0 z-0">
         {floatingIcons.map((item) => (
           <motion.div
             key={item.id}
-            className="absolute text-green-300"
+            className="absolute text-purple-400 opacity-60" // Re-themed
             style={{
               top: item.top,
               left: item.left,
@@ -966,13 +2829,14 @@ export default function App() {
             transition={{ duration: 0.5 }}
             className="flex items-center justify-between"
           >
-            <div className="text-3xl font-bold text-[#603B2A]">
-              SAYANA
+            <div className="flex items-center text-3xl font-bold text-white">
+              <img src="https://agno.blob.core.windows.net/dream-images/Image%20of.png" alt="SAYANA logo" className="w-10 h-10 mr-3 rounded-md object-contain" />
+              <span>SAYANA</span>
             </div>
             <motion.button
-              onClick={handleGetStarted}
-              className="hidden sm:block rounded-full bg-white/70 px-6 py-2.5 text-sm font-semibold text-[#603B2A] shadow-lg shadow-gray-300/20 backdrop-blur-lg transition-all"
-              whileHover={{ scale: 1.05, shadow: "0px 5px 20px rgba(96, 59, 42, 0.2)" }}
+              onClick={() => navigate('/auth')}
+              className="hidden sm:block rounded-full bg-white/5 backdrop-blur-md border border-white/10 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-black/20 transition-all"
+              whileHover={{ scale: 1.05, shadow: "0px 5px 20px rgba(0, 0, 0, 0.2)", backgroundColor: "rgba(255,255,255,0.1)" }}
               whileTap={{ scale: 0.95 }}
               transition={buttonSpring}
             >
@@ -987,7 +2851,7 @@ export default function App() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-5xl font-extrabold tracking-tight text-[#4a2e1f] sm:text-6xl md:text-8xl"
+            className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl md:text-8xl"
           >
             Where Silence Speaks
           </motion.h1>
@@ -995,7 +2859,7 @@ export default function App() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="mt-4 max-w-xl text-lg text-[#603B2A]/80 sm:text-2xl"
+            className="mt-4 max-w-xl text-lg text-white/80 sm:text-2xl"
           >
             Empowering expression beyond sound and words
           </motion.p>
@@ -1006,8 +2870,8 @@ export default function App() {
             className="mt-10 flex flex-col items-center gap-4 sm:flex-row"
           >
             <motion.button
-              onClick={handleGetStarted}
-              className="rounded-full bg-[#603B2A] px-10 py-4 text-lg font-semibold text-white shadow-lg shadow-[#603B2A]/30 transition-all"
+              onClick={() => navigate('/auth')}
+              className="rounded-full bg-purple-600 px-10 py-4 text-lg font-semibold text-white shadow-lg shadow-purple-600/30 transition-all"
               whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               transition={buttonSpring}
@@ -1016,8 +2880,8 @@ export default function App() {
             </motion.button>
             <motion.button
               onClick={() => handleScrollTo('how-it-works')}
-              className="rounded-full bg-white/70 px-10 py-4 text-lg font-semibold text-[#603B2A] shadow-lg shadow-gray-300/20 backdrop-blur-lg transition-all"
-              whileHover={{ scale: 1.05, y: -2 }}
+              className="rounded-full bg-white/5 backdrop-blur-md border border-white/10 px-10 py-4 text-lg font-semibold text-white shadow-lg shadow-black/20 transition-all"
+              whileHover={{ scale: 1.05, y: -2, backgroundColor: "rgba(255,255,255,0.1)" }}
               whileTap={{ scale: 0.95 }}
               transition={buttonSpring}
             >
@@ -1033,7 +2897,7 @@ export default function App() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.5 }}
             transition={{ duration: 0.7 }}
-            className="mx-auto mb-16 max-w-3xl text-center text-xl text-[#603B2A]/90"
+            className="mx-auto mb-16 max-w-3xl text-center text-xl text-white/90"
           >
             SAYANA bridges emotion and understanding through AI-powered sign and facial translation — making silence heard worldwide.
           </motion.p>
@@ -1048,49 +2912,56 @@ export default function App() {
             {features.map((feature) => (
               <motion.div
                 key={feature.title}
-                className="flex flex-col items-center rounded-3xl bg-white/60 p-8 text-center shadow-xl shadow-green-300/20 backdrop-blur-lg sm:items-start sm:text-left"
+                className="flex flex-col items-center rounded-3xl bg-white/5 backdrop-blur-md shadow-lg shadow-black/20 border border-white/10 p-8 text-center sm:items-start sm:text-left"
                 variants={cardVariants}
               >
                 <FeatureIcon type={feature.icon} />
-                <h3 className="mb-3 text-2xl font-bold text-[#4a2e1f]">
+                <h3 className="mb-3 text-2xl font-bold text-white">
                   {feature.title}
                 </h3>
-                <p className="text-[#603B2A]/80">
+                <p className="text-white/80">
                   {feature.description}
                 </p>
-                {/* Demo button removed from here */}
               </motion.div>
             ))}
           </motion.div>
         </section>
 
         {/* --- NEW SECTIONS ADDED --- */}
+        <HowItWorksSection />
+  <TechnologySection onGetStartedClick={() => navigate('/auth')} />
+        
+        {/* <TestimonialsSection />  -- This is now replaced */}
+        <CardStreamSection />
 
-  <HowItWorksSection />
-
-  <TechnologySection onGetStartedClick={handleGetStarted} />
-
-  <TestimonialsSection />
-
-  <MissionSection />
-
-  <FAQSection />
-
+    <MissionSection />
+    <FAQSection />
         {/* --- END OF NEW SECTIONS --- */}
 
 
         {/* Footer */}
-        <footer className="py-10 text-center text-green-600">
+        <footer className="py-10 text-center text-white/60">
           © {new Date().getFullYear()} SAYANA. All rights reserved.
         </footer>
       </div>
 
-          {/* Chatbot Component */}
-          <Chatbot />
+      {/* Chatbot Component */}
+      <Chatbot />
+    </div>
+  );
+}
 
-          {/* Gemini Demo Modal Removed */}
-        </div>
-      )} />
-    </Routes>
+
+// --- Main App Component ---
+export default function App() {
+  return (
+    <React.Fragment>
+      <GlobalStyles />
+      <MorphingBackground />
+      <Routes>
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/" element={<SayanaContent />} />
+      </Routes>
+    </React.Fragment>
   );
 }
