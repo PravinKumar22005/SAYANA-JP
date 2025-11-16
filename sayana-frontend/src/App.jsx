@@ -2647,7 +2647,18 @@ const Chatbot = () => {
       const systemPrompt = "You are 'Sayan,' the friendly and helpful chatbot for SAYANA. SAYANA is an application that empowers deaf and mute users through AI-powered emotion detection, real-time sign language translation, secure conversations, and multilingual support. Your *only* job is to answer questions about SAYANA's features, accessibility, technology, and mission. Be empathetic, clear, and concise. **Strictly refuse to answer any questions or engage in any conversation that is not about SAYANA.** If asked about anything else, politely redirect the user back to SAYANA's features. For example: 'I'm here to help with any questions you have about SAYANA. How can I tell you more about our AI translation features?'";
 
       const userQuery = input;
-      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+      const rawBase = import.meta.env.VITE_API_BASE || '';
+      const resolveApiBase = (candidate) => {
+        const v = (candidate || '').trim();
+        if (!v) return window?.location?.origin || 'http://localhost:5000';
+        // If candidate is just a protocol (e.g. "http://"), treat as invalid
+        const withoutProto = v.replace(/^https?:\/\//i, '');
+        if (!withoutProto) return window?.location?.origin || 'http://localhost:5000';
+        // Ensure it starts with http(s)
+        if (!/^https?:\/\//i.test(v)) return window?.location?.origin || 'http://localhost:5000';
+        return v.replace(/\/+$/, '');
+      };
+      const API_BASE = resolveApiBase(rawBase);
       const token = localStorage.getItem('token');
       const endpoint = token ? `${API_BASE}/api/agent/query` : `${API_BASE}/api/agent/query/public`;
 

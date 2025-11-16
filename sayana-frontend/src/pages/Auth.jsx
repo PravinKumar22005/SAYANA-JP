@@ -318,7 +318,16 @@ export default function Auth() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+  const rawBase = import.meta.env.VITE_API_BASE || '';
+  const resolveApiBase = (candidate) => {
+    const v = (candidate || '').trim();
+    if (!v) return window?.location?.origin || 'http://localhost:5000';
+    const withoutProto = v.replace(/^https?:\/\//i, '');
+    if (!withoutProto) return window?.location?.origin || 'http://localhost:5000';
+    if (!/^https?:\/\//i.test(v)) return window?.location?.origin || 'http://localhost:5000';
+    return v.replace(/\/+$/, '');
+  };
+  const API_BASE = resolveApiBase(rawBase);
 
   useEffect(() => {
     // inject styles once

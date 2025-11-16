@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
+const agentRoutes = require('./routes/agentRoutes');
 
 dotenv.config();
 connectDB();
@@ -21,6 +22,7 @@ app.use((req, res, next) => {
 app.use(cors());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/agent', agentRoutes);
 
 app.get('/', (req, res) => res.send('Sayana API up'));
 
