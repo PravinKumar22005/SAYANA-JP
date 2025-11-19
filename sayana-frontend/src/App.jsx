@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Routes, Route } from 'react-router-dom';
 import Auth from './pages/Auth';
+import OurApp from './pages/our';
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -9,6 +10,8 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { AfterimagePass } from "three/addons/postprocessing/AfterimagePass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { motion, AnimatePresence } from 'framer-motion';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // --- Global Styles Component (from Morphing Background) ---
 // Injects all the CSS from the original <style> tag into the document head
@@ -1000,7 +1003,7 @@ const howItWorksSteps = [
   {
     icon: "step1",
     title: "Point Your Camera",
-    description: "Simply open the app and point your camera. Sayana is ready to listen and see."
+    description: "Simply open the app and point your camera at a person or group."
   },
   {
     icon: "step2",
@@ -1030,7 +1033,7 @@ const testimonials = [
   {
     name: "Chen W.",
     role: "App User",
-    quote: "As someone who is mute, this app has given me my voice. The real-time translation is fast and accurate. It's my daily companion.",
+    quote: "As someone who is mute, this app has given me my voice. The real-time translation is fast and accurate. It is my daily companion.",
     stars: 5
   },
   {
@@ -1056,14 +1059,13 @@ const faqData = [
   },
   {
     question: "Is SAYANA an app I need to download?",
-    answer: "SAYANA is a powerful web application, which means you don't need to download anything! You can access it from any modern browser on your computer, tablet, or phone, ensuring you always have the latest version."
+    answer: "SAYANA is a powerful web application, which means you do not need to download anything! You can access it from any modern browser on your computer, tablet, or phone, ensuring you always have the latest version."
   },
   {
     question: "How can I get involved or support SAYANA's mission?",
-    answer: "We're so glad you asked! You can support us by sharing the app with your community, providing feedback for improvements, or following and sharing our mission on social media. We also partner with organizations for accessibility. Please visit our 'Contact' page for more information."
+    answer: "We are so glad you asked! You can support us by sharing the app with your community, providing feedback for improvements, or following and sharing our mission on social media. We also partner with organizations for accessibility. Please visit our 'Contact' page for more information."
   }
 ];
-
 
 // --- Animation Variants ---
 const containerVariants = {
@@ -1395,7 +1397,7 @@ const CardStreamSection = () => {
             }
 
             endDrag() {
-                if (!this.isDragging) return;
+                               if (!this.isDragging) return;
 
                 this.isDragging = false;
                 this.cardLine.classList.remove("dragging");
@@ -1692,8 +1694,11 @@ const CardStreamSection = () => {
                             cardWidth
                         );
 
-                        const normalClipRight = (scannerIntersectLeft / cardWidth) * 100;
-                        const asciiClipLeft = (scannerIntersectRight / cardWidth) * 100;
+                        const normalCardWidth = parseFloat(getComputedStyle(normalCard).width);
+                        const asciiCardWidth = parseFloat(getComputedStyle(asciiCard).width);
+
+                        const normalClipRight = (scannerIntersectLeft / normalCardWidth) * 100;
+                        const asciiClipLeft = (scannerIntersectRight / asciiCardWidth) * 100;
 
                         normalCard.style.setProperty("--clip-right", `${normalClipRight}%`);
                         asciiCard.style.setProperty("--clip-left", `${asciiClipLeft}%`);
@@ -2974,6 +2979,7 @@ export default function App() {
       <MorphingBackground />
       <Routes>
         <Route path="/auth" element={<Auth />} />
+        <Route path="/our" element={<OurApp />} />
         <Route path="/" element={<SayanaContent />} />
       </Routes>
     </React.Fragment>

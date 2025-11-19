@@ -330,6 +330,14 @@ export default function Auth() {
   const API_BASE = resolveApiBase(rawBase);
 
   useEffect(() => {
+    // Clear form fields and errors when switching between login/signup
+    setName('');
+    setEmail('');
+    setPassword('');
+    setError(null);
+  }, [isLogin]);
+
+  useEffect(() => {
     // inject styles once
     if (!document.getElementById('sayana-auth-styles')) {
       const s = document.createElement('style');
@@ -355,7 +363,7 @@ export default function Auth() {
       if (!res.ok) throw new Error(data.message || 'Request failed');
 
       if (data.token) localStorage.setItem('token', data.token);
-      navigate('/');
+      navigate('/our');
     } catch (err) {
       setError(err.message || String(err));
     } finally {

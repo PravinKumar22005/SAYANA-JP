@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { queryAgent, queryAgentPublic, debugGeminiTest, debugListModels } = require('../controllers/agentController');
-const { protect } = require('../middleware/authMiddleware');
+const protect = require('../middleware/authMiddleware');
 
 // Public: brief assistance for unauthenticated users
 router.post('/query/public', queryAgentPublic);
