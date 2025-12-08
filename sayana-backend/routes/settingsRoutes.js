@@ -16,4 +16,7 @@ router.put('/password', authMiddleware, updatePassword);
 // Delete account
 router.delete('/account', authMiddleware, deleteAccount);
 
+// Get profile
+router.get('/profile', authMiddleware, require('../controllers/settingsController').getProfile);
+
 module.exports = router;

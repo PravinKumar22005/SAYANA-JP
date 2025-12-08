@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Sayana API - Quick Tests",
+    "_postman_id": "sayana-quick-tests",
+    "description": "Collection for smoke-testing Sayana backend (auth, friends, messages, ai, settings).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Dev User\",\n  \"email\": \"dev@example.com\",\n  \"password\": \"Password123\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"sachin@example.com\",\n  \"password\": \"Password123\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  var json = pm.response.json();",
+                  "  if (json && json.token) { pm.collectionVariables.set('token', json.token); console.log('Saved token to collection variable'); }",
+                  "} catch (e) { console.log('No token found in login response'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Profile (use token)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "{{baseUrl}}/api/auth/profile"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Friends",
+      "item": [
+        { "name": "List Friends", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": "{{baseUrl}}/api/friends/list" } },
+        { "name": "Friend Requests", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": "{{baseUrl}}/api/friends/requests" } },
+        { "name": "Send Request", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" } ], "body": { "mode": "raw", "raw": "{ \"to\": \"<friendUserId>\" }" }, "url": "{{baseUrl}}/api/friends/send-request" } }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        { "name": "Get Conversation", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": "{{baseUrl}}/api/messages/<friendId>" } },
+        { "name": "Send Message", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" } ], "body": { "mode": "raw", "raw": "{ \"to\": \"<friendId>\", \"message\": \"Hello from Postman\" }" }, "url": "{{baseUrl}}/api/messages/send" } }
+      ]
+    },
+    {
+      "name": "AI",
+      "item": [
+        { "name": "News", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": "{{baseUrl}}/api/ai/news" } },
+        { "name": "Chatbot", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" } ], "body": { "mode": "raw", "raw": "{ \"message\": \"Hello bot\" }" }, "url": "{{baseUrl}}/api/ai/chatbot" } }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        { "name": "Profile", "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ], "url": "{{baseUrl}}/api/settings/profile" } },
+        { "name": "Change Username", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" } ], "body": { "mode": "raw", "raw": "{ \"username\": \"NewName\" }" }, "url": "{{baseUrl}}/api/settings/username" } },
+        { "name": "Change Password", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" } ], "body": { "mode": "raw", "raw": "{ \"oldPassword\": \"Password123\", \"newPassword\": \"NewPass123\" }" }, "url": "{{baseUrl}}/api/settings/password" } }
+      ]
+    }
+  ]
+}

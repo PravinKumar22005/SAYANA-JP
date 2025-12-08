@@ -43,4 +43,15 @@ const loginUser = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser };
+const getProfile = async (req, res) => {
+  try {
+    // authMiddleware already attached user to req.user (without password)
+    if (!req.user) return res.status(401).json({ message: 'Not authenticated' });
+    res.json({ user: req.user });
+  } catch (err) {
+    console.error('getProfile error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports = { registerUser, loginUser, getProfile };

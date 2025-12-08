@@ -33,21 +33,30 @@ friendController.sendFriendRequest = async (req, res) => {
     const from = req.user.id;
 
     if (to === from) {
-        return res.status(400).json({ message: "You cannot send a friend request to yourself." });
+      return res.status(400).json({ message: "You cannot send a friend request to yourself." });
     }
 
-    // Check if a request already exists
-    const existingRequest = await FriendRequest.findOne({
+    // 1) Check if already friends using the friends array
+    const sender = await User.findById(from).select('friends');
+    if (sender?.friends?.map(f => f.toString()).includes(String(to))) {
+      return res.status(400).json({ message: 'You are already friends.' });
+    }
+
+    // 2) Only block if there is an ACTIVE PENDING request between these two
+    const existingPending = await FriendRequest.findOne({
       $or: [
         { from, to },
         { from: to, to: from },
       ],
+      status: 'pending'
     });
 
-    if (existingRequest) {
-      return res.status(400).json({ message: 'Friend request already sent or you are already friends.' });
+    if (existingPending) {
+      // You can customize this message if you want more info
+      return res.status(400).json({ message: 'Friend request already sent or pending between you two.' });
     }
 
+    // 3) Otherwise create a fresh pending request
     const friendRequest = new FriendRequest({ from, to });
     await friendRequest.save();
 
@@ -61,7 +70,11 @@ friendController.sendFriendRequest = async (req, res) => {
 // Get pending friend requests
 friendController.getFriendRequests = async (req, res) => {
   try {
-    const friendRequests = await FriendRequest.find({ to: req.user.id, status: 'pending' }).populate('from', 'name email');
+    const friendRequests = await FriendRequest.find({
+      to: req.user.id,
+      status: 'pending'
+    }).populate('from', 'name email');
+
     res.json(friendRequests);
   } catch (error) {
     console.error(error);
@@ -103,8 +116,12 @@ friendController.rejectFriendRequest = async (req, res) => {
       return res.status(404).json({ message: 'Request not found.' });
     }
 
+    // Either mark rejected OR delete; both are fine since sendRequest ignores non-pending.
     request.status = 'rejected';
     await request.save();
+
+    // If you prefer to delete instead, comment above 2 lines and uncomment below:
+    // await FriendRequest.findByIdAndDelete(requestId);
 
     res.json({ message: 'Friend request rejected.' });
   } catch (error) {
@@ -118,6 +135,21 @@ friendController.getFriends = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('friends', 'name email');
     res.json(user.friends);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Get sent (outgoing) friend requests
+friendController.getSentFriendRequests = async (req, res) => {
+  try {
+    const sent = await FriendRequest.find({
+      from: req.user.id,
+      status: 'pending'
+    }).populate('to', 'name email');
+
+    res.json(sent);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

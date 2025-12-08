@@ -8,15 +8,20 @@ const {
   acceptFriendRequest,
   rejectFriendRequest,
   getFriends,
+  getSentFriendRequests,
 } = require('../controllers/friendController');
 
 // Search for users
 router.get('/users/search', authMiddleware, searchUsers);
 
 // Friend requests
-router.post('/send-request', authMiddleware, sendFriendRequest);
+const { body, query } = require('express-validator');
+const validateRequest = require('../middleware/validateRequest');
+router.post('/send-request', authMiddleware, [ body('to').isMongoId().withMessage('Valid user id required') ], validateRequest, sendFriendRequest);
 router.get('/requests', authMiddleware, getFriendRequests);
-router.post('/reject-request', authMiddleware, rejectFriendRequest);
+router.get('/requests/sent', authMiddleware, getSentFriendRequests);
+router.post('/accept-request', authMiddleware, [ body('requestId').isMongoId().withMessage('Valid request id required') ], validateRequest, acceptFriendRequest);
+router.post('/reject-request', authMiddleware, [ body('requestId').isMongoId().withMessage('Valid request id required') ], validateRequest, rejectFriendRequest);
 
 // Get friends list
 router.get('/list', authMiddleware, getFriends);

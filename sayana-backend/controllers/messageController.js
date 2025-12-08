@@ -9,7 +9,9 @@ exports.sendMessage = async (req, res) => {
 
     // Check if 'to' user is a friend
     const sender = await User.findById(from);
-    if (!sender.friends.includes(to)) {
+    // ensure comparison works for ObjectId vs string
+    const friendIds = (sender.friends || []).map(f => f.toString());
+    if (!friendIds.includes(String(to))) {
       return res.status(403).json({ message: 'You can only send messages to friends.' });
     }
 
