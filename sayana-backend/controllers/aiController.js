@@ -21,15 +21,6 @@ const apiKeys = rawKeysEnv
   .map((k) => k.trim())
   .filter(Boolean);
 
-let currentKeyIndex = 0;
-
-function getNextApiKey() {
-  if (!apiKeys.length) return null;
-  const key = apiKeys[currentKeyIndex];
-  currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-  return key;
-}
-
 const hasKeys = apiKeys.length > 0;
 
 if (!hasKeys) {
@@ -42,19 +33,25 @@ if (!hasKeys) {
   );
 }
 
-function createModel() {
-  const apiKey = getNextApiKey();
-  if (!apiKey) return null;
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const requestedModel = process.env.GEMINI_MODEL;
-  const defaultModel = 'gemini-1.5-flash';
-  const modelName = requestedModel || defaultModel;
-
-  const model = genAI.getGenerativeModel({ model: modelName });
-
-  return { model, apiKey, modelName };
-}
+const resolveModelPriority = () => {
+  const requested = (process.env.GEMINI_MODEL || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const defaults = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-1.5-flash',
+  ];
+  const models = [];
+  const seen = new Set();
+  for (const name of [...requested, ...defaults]) {
+    if (!name || seen.has(name)) continue;
+    models.push(name);
+    seen.add(name);
+  }
+  return models;
+};
 
 /**
  * Helper to call Gemini with simple retry: if first key fails, try another.
@@ -64,51 +61,43 @@ async function generateWithRetry(promptText) {
     throw new Error('No API keys configured');
   }
 
-  // First attempt with one key
-  let session = createModel();
-  if (!session) {
-    throw new Error('Failed to initialize Gemini model');
-  }
+  const models = resolveModelPriority();
+  let lastError = null;
 
-  const { model, apiKey, modelName } = session;
-
-  try {
-    const result = await model.generateContent(promptText);
-    const response = await result.response;
-    const text = response.text();
-    return text;
-  } catch (err) {
-    console.error(
-      `[AI] Error using model "${modelName}" with key starting "${apiKey.slice(
-        0,
-        6
-      )}***":`,
-      err?.message || err
-    );
-
-    // Try one more time with a different key (if we have > 1 key)
-    if (apiKeys.length > 1) {
-      console.warn('[AI] Retrying with another API key...');
-      const retrySession = createModel();
-      if (!retrySession) {
-        throw err;
-      }
+  for (const apiKey of apiKeys) {
+    for (const modelName of models) {
       try {
-        const retryResult = await retrySession.model.generateContent(promptText);
-        const retryResponse = await retryResult.response;
-        return retryResponse.text();
-      } catch (retryErr) {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(promptText);
+        const response = await result.response;
+        const text = response.text();
+        if (modelName !== (process.env.GEMINI_MODEL || models[0])) {
+          console.info(
+            `[AI] Falling back to model "${modelName}" for prompt generation.`
+          );
+        }
+        return text;
+      } catch (err) {
+        const message = err?.message || String(err);
+        const status = err?.response?.status || err?.status;
         console.error(
-          '[AI] Retry with another key also failed:',
-          retryErr?.message || retryErr
+          `[AI] Error using model "${modelName}" with key ending "${apiKey.slice(-4)}":`,
+          message
         );
-        throw retryErr;
+        lastError = err;
+        const isQuota = status === 429 || /RESOURCE_EXHAUSTED/i.test(message);
+        const isRateLimit = /quota/i.test(message) || /rate/i.test(message);
+        // For quota/rate-limit errors, try next model or key
+        if (isQuota || isRateLimit) {
+          continue;
+        }
+        // For other errors, also try next model/key but keep lastError
       }
-    } else {
-      // Only one key – nothing else to try
-      throw err;
     }
   }
+
+  throw lastError || new Error('Gemini generation failed for all configured keys/models');
 }
 
 /**
@@ -183,7 +172,27 @@ Your task:
 - Avoid very long paragraphs.
     `.trim();
 
-    const text = await generateWithRetry(prompt);
+    // Improved prompt guidance: encourage varied phrasing, short follow-ups, and actionable suggestions
+    const enhancedPrompt = `
+  You are "Sayana Bot", the assistant of SAYANA – an app that helps deaf and mute users communicate better (sign language detection, messaging, etc.).
+
+  User said:
+  "${message}"
+
+    Guidelines for the reply:
+  - Be friendly and simple in tone.
+  - Vary your phrasing across responses; avoid repeating the same template or opener.
+  - Answer concisely (roughly 3–6 short lines), but when teaching, include one brief actionable step or a micro-exercise.
+  - When describing or teaching signs, always use Indian Sign Language (ISL) conventions — give clear, step-by-step ISL instructions (handshape, movement, location) and note any cultural tips.
+  - Ask one short follow-up question when it helps clarify the user's intent (for example: "Do you want a written description or a short video example?").
+  - If the user asks about the app, briefly state core features and offer one actionable next-step (e.g., "Try the Sign Language mode in the app's Learn tab").
+  - Do not always start with the exact same greeting; use varied openings.
+
+  Reply now following these guidelines (use ISL for any sign examples):
+  """
+  `.trim();
+
+    const text = await generateWithRetry(enhancedPrompt);
 
     res.json({ reply: text });
   } catch (error) {

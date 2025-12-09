@@ -3,6 +3,9 @@ const fetch = global.fetch || require('node-fetch');
 
 const DEFAULT_SYSTEM_PROMPT = `You are 'Sayan,' the friendly and helpful chatbot for SAYANA. SAYANA is an application that empowers deaf and mute users through AI-powered emotion detection, real-time sign language translation, secure conversations, and multilingual support. Your *only* job is to answer questions about SAYANA's features, accessibility, technology, and mission. Be empathetic, clear, and concise. **Strictly refuse to answer any questions or engage in any conversation that is not about SAYANA.** If asked about anything else, politely redirect the user back to SAYANA's features. For example: 'I'm here to help with any questions you have about SAYANA. How can I tell you more about our AI translation features?'`;
 
+// Encourage varied replies and short follow-up questions while staying on-topic and using ISL
+const ENHANCED_DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + "\n\nWhen answering, vary your phrasing between responses, offer one brief, practical suggestion or micro-step when relevant, and ask one short follow-up question to clarify intent. When giving sign examples or teaching signs, always use Indian Sign Language (ISL) conventions (describe handshape, movement, and location). Keep replies concise and avoid repeating the same opening line.";
+
 /**
  * Calls the generative API with the given prompt and context.
  * @param {string} prompt - The user's latest prompt.
@@ -10,87 +13,123 @@ const DEFAULT_SYSTEM_PROMPT = `You are 'Sayan,' the friendly and helpful chatbot
  * @param {string} systemPrompt - The instructions for the AI model.
  * @returns {Promise<object>} The API response.
  */
+const resolveGeminiKeys = () => (
+  process.env.GEMINI_API_KEYS ||
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_API_KEY ||
+  ''
+)
+  .split(',')
+  .map(k => k.trim())
+  .filter(Boolean);
+
+const resolveModelPriority = () => {
+  const requested = (process.env.GEMINI_MODEL || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const defaults = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-1.5-flash',
+  ];
+  const models = [];
+  const seen = new Set();
+  for (const name of [...requested, ...defaults]) {
+    if (!name || seen.has(name)) continue;
+    models.push(name);
+    seen.add(name);
+  }
+  return models;
+};
+
 const callGenerativeApi = async (prompt, history = [], systemPrompt = DEFAULT_SYSTEM_PROMPT) => {
-  const apiKeys = (process.env.GEMINI_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const apiKeys = resolveGeminiKeys();
+  const models = resolveModelPriority();
 
   if (apiKeys.length === 0) {
     return {
       ok: false,
       text: 'API_KEY_MISSING',
-      raw: { error: { message: 'GEMINI_API_KEY is not configured in the backend .env file.' } },
+      raw: { error: { message: 'Configure GEMINI_API_KEYS, GEMINI_API_KEY, or GOOGLE_API_KEY in the backend .env file.' } },
     };
   }
 
   let lastError = null;
 
   for (const apiKey of apiKeys) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    for (const modelName of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
-    const contents = history.map(item => ({
-      role: item.from === 'bot' ? 'model' : 'user',
-      parts: [{ text: item.text }],
-    }));
-    contents.push({
-      role: 'user',
-      parts: [{ text: prompt }],
-    });
-
-    const body = {
-      contents,
-      systemInstruction: {
-        parts: [{ text: systemPrompt }],
-      },
-    };
-
-    try {
-      const apiResponse = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const contents = history.map(item => ({
+        role: item.from === 'bot' ? 'model' : 'user',
+        parts: [{ text: item.text }],
+      }));
+      contents.push({
+        role: 'user',
+        parts: [{ text: prompt }],
       });
 
-      const responseText = await apiResponse.text();
-      
-      if (!apiResponse.ok) {
-        let errorJson = {};
-        try {
-          errorJson = JSON.parse(responseText);
-        } catch (e) {
-          errorJson = {
-            error: {
-              message: 'The API returned a non-JSON error.',
-              status: `HTTP_${apiResponse.status}`,
-              __raw_text: responseText.substring(0, 500) + '...',
-            },
-          };
-        }
-        
-        lastError = { ok: false, text: errorJson.error?.status || 'API_ERROR', raw: errorJson };
-
-        // If we get a rate limit or unavailable error, try the next key
-        if (lastError.text === 'RESOURCE_EXHAUSTED' || lastError.text === 'UNAVAILABLE') {
-          console.warn(`API key ending in ...${apiKey.slice(-4)} failed with ${lastError.text}. Trying next key.`);
-          continue; // Move to the next key
-        }
-
-        // For other errors, fail immediately
-        return lastError;
-      }
-
-      const responseData = JSON.parse(responseText);
-      const generatedText = extractTextFromResponse(responseData);
-
-      return { ok: true, text: generatedText, raw: responseData }; // Success, exit the loop
-
-    } catch (error) {
-      console.error('Fatal error calling Generative API:', error);
-      lastError = {
-        ok: false,
-        text: 'INTERNAL_SERVER_ERROR',
-        raw: { error: { message: error.message, code: 'FETCH_FAILED' } },
+      const body = {
+        contents,
+        systemInstruction: {
+          parts: [{ text: systemPrompt }],
+        },
       };
-      continue; // Try next key on network failure
+
+      try {
+        const apiResponse = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const responseText = await apiResponse.text();
+        
+        if (!apiResponse.ok) {
+          let errorJson = {};
+          try {
+            errorJson = JSON.parse(responseText);
+          } catch (e) {
+            errorJson = {
+              error: {
+                message: 'The API returned a non-JSON error.',
+                status: `HTTP_${apiResponse.status}`,
+                __raw_text: responseText.substring(0, 500) + '...',
+              },
+            };
+          }
+          
+          lastError = { ok: false, text: errorJson.error?.status || 'API_ERROR', raw: { ...errorJson, model: modelName } };
+
+          // If we get a rate limit or unavailable error, try the next model or key
+          if (lastError.text === 'RESOURCE_EXHAUSTED' || lastError.text === 'UNAVAILABLE' || apiResponse.status === 429) {
+            console.warn(`Gemini model ${modelName} with key ...${apiKey.slice(-4)} returned ${lastError.text}. Trying fallback model/key.`);
+            continue; // Move to next model/key
+          }
+
+          // For other errors, keep the error but allow trying the next model
+          continue;
+        }
+
+        const responseData = JSON.parse(responseText);
+        const generatedText = extractTextFromResponse(responseData);
+
+        if (modelName !== models[0]) {
+          console.info(`Gemini agent fell back to model "${modelName}".`);
+        }
+
+        return { ok: true, text: generatedText, raw: responseData }; // Success, exit loops
+
+      } catch (error) {
+        console.error('Fatal error calling Generative API:', error);
+        lastError = {
+          ok: false,
+          text: 'INTERNAL_SERVER_ERROR',
+          raw: { error: { message: error.message, code: 'FETCH_FAILED', model: modelName } },
+        };
+        continue; // Try next model/key
+      }
     }
   }
 
@@ -126,6 +165,12 @@ const handleApiResult = (result, res) => {
     // Handle specific, known errors with user-friendly messages
     if (result.text === 'UNAVAILABLE') {
       return res.json({ text: 'The AI model is currently overloaded. Please try again in a moment.' });
+    }
+    if (result.text === 'RESOURCE_EXHAUSTED') {
+      return res.json({
+        text: 'The configured Gemini model has exhausted its free-tier quota. Please try again later or switch to a lighter model such as gemini-1.5-flash.',
+        debug: result.raw,
+      });
     }
     // For other errors, return the status text
     return res.json({ text: `An error occurred: ${result.text}`, debug: result.raw });
@@ -180,11 +225,11 @@ const debugGeminiTest = async (req, res) => {
  * @access  Public
  */
 const debugListModels = async (req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = resolveGeminiKeys()[0];
   if (!apiKey) {
     return res.status(400).json({
       ok: false,
-      error: { message: 'GEMINI_API_KEY is not configured in the backend .env file.' },
+      error: { message: 'Configure GEMINI_API_KEYS, GEMINI_API_KEY, or GOOGLE_API_KEY in the backend .env file.' },
     });
   }
 
