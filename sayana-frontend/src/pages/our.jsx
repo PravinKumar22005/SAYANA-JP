@@ -733,10 +733,16 @@ function AppContent() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [caption, setCaption] = useState('');
   const [pendingFriendCount, setPendingFriendCount] = useState(0); // 🆕 badge count
-  
+  const [signWords, setSignWords] = useState([]);
+  const [lastSignLabel, setLastSignLabel] = useState(null);
+  const [lastSignTime, setLastSignTime] = useState(0);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const detectingRef = useRef(false);
+  const signDetectDisabledRef = useRef(false);
   // Fetch Current User on Mount
   const refreshUser = async () => {
     try {
@@ -771,8 +777,22 @@ function AppContent() {
     refreshPendingFriends();
 
     // Optional: live-ish updates like Instagram
-    const interval = setInterval(refreshPendingFriends, 20000); // every 20 seconds
-    return () => clearInterval(interval);
+    // Poll less frequently (every 60s) and only when the page is visible to reduce constant GET traffic
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return; // pause when tab hidden
+      refreshPendingFriends();
+    }, 60000); // every 60 seconds
+
+    // Refresh immediately when tab becomes visible again
+    const onVisibility = () => {
+      if (!document.hidden) refreshPendingFriends();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // Simulation of Call Timer
@@ -790,13 +810,184 @@ function AppContent() {
     return () => { clearTimeout(timer); clearInterval(interval); };
   }, [callStatus]);
 
-  const handleEndCall = () => {
+   const handleEndCall = () => {
     setCallStatus('Call Ended');
     addToast('Call ended', 'info');
+    // 🆕 reset sentence
+    setSignWords([]);
+    setLastSignLabel(null);
+    setCaption('');
     setTimeout(() => {
        setCallStatus('00:00'); 
     }, 2000);
   };
+
+    // 🆕 Start local camera stream
+  const startLocalStream = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        addToast('Camera not supported in this browser', 'error');
+        return;
+      }
+
+      // If already streaming, don't start again
+      if (streamRef.current) return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false, // we don't need audio for sign detection
+      });
+
+      streamRef.current = stream;
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        await localVideoRef.current.play().catch(() => {});
+      }
+    } catch (err) {
+      console.error('Error starting camera:', err);
+      addToast('Unable to access camera. Please allow camera permission.', 'error');
+    }
+  };
+
+  // 🆕 Stop local camera stream
+  const stopLocalStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  };
+
+    // 🆕 Manage camera lifecycle
+  useEffect(() => {
+    if (activePage === 'camera' && !isVideoOff) {
+      startLocalStream();
+    } else {
+      // If we leave the camera page or turn video off, stop the stream
+      stopLocalStream();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      stopLocalStream();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, isVideoOff]);
+
+   // 🆕 Periodically capture frame & send to /api/ai/sign-detect
+  useEffect(() => {
+    if (activePage !== 'camera') return;
+
+    const intervalMs = 5000;               // every 5 seconds
+    const MAX_CALLS_PER_SESSION = 20;      // safety cap per session
+    let callCount = 0;
+    let stoppedDueToQuota = false;
+
+    const tick = async () => {
+      if (stoppedDueToQuota) return;
+      if (callCount >= MAX_CALLS_PER_SESSION) return;
+
+      if (isVideoOff) return;
+      if (!localVideoRef.current || !canvasRef.current) return;
+      if (!streamRef.current) return;
+      if (detectingRef.current) return; // avoid overlapping calls
+
+      detectingRef.current = true;
+      try {
+        const video = localVideoRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+
+        if (!video.videoWidth || !video.videoHeight) return;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const base64 = dataUrl.split(',')[1];
+
+        const res = await apiCall('/api/ai/sign-detect', {
+          method: 'POST',
+          body: { image: base64 },
+        });
+
+        callCount += 1;
+
+        // 🆕 If backend returns a label, treat it as a "word"
+        if (res?.label) {
+          const label = String(res.label).trim();
+          const now = Date.now();
+
+          // optional: ignore low-confidence detections
+          const confidence = typeof res.confidence === 'number' ? res.confidence : 0;
+          if (!label || confidence < 0.5) {
+            // keep existing sentence, just show "listening..."
+            if (!signWords.length) {
+              setCaption('Listening for conversation...');
+            }
+            return;
+          }
+
+          // Debounce: don't push same word too rapidly
+          const MIN_GAP_MS = 1500; // at least 1.5s between same word
+          if (
+            label === lastSignLabel &&
+            now - lastSignTime < MIN_GAP_MS
+          ) {
+            // too soon & same word; ignore
+            return;
+          }
+
+          setLastSignLabel(label);
+          setLastSignTime(now);
+
+          setSignWords(prev => {
+            // also prevent immediate duplicates at array end
+            if (prev[prev.length - 1] === label) return prev;
+            const next = [...prev, label];
+            // build human-readable sentence
+            const sentence = next.join(' ');
+            setCaption(sentence);
+            return next;
+          });
+        } else if (res?.raw) {
+          // If backend falls back to raw text, you can optionally show it
+          if (!signWords.length) {
+            setCaption(res.raw);
+          }
+        } else {
+          if (!signWords.length) {
+            setCaption('Listening for conversation...');
+          }
+        }
+      } catch (err) {
+        console.error('Sign detect error:', err);
+
+        if (err?.message?.includes('429')) {
+          stoppedDueToQuota = true;
+          setCaption('Sign detection paused due to AI usage limits. Please try again later.');
+          addToast('Sign detection limit reached for now. Try again later.', 'info');
+        }
+      } finally {
+        detectingRef.current = false;
+      }
+    };
+
+    const id = setInterval(tick, intervalMs);
+    return () => clearInterval(id);
+  }, [
+    activePage,
+    isVideoOff,
+    addToast,
+    signWords.length,
+    lastSignLabel,
+    lastSignTime,
+  ]);
+
+
+
+
 
   return (
     <div className="relative w-full h-screen bg-[#040307] text-white overflow-hidden font-sans">
@@ -842,12 +1033,36 @@ function AppContent() {
                       {isVideoOff && <div className="w-full h-full flex items-center justify-center text-white/50"><Icon path={icons.videoOff} className="w-8 h-8" /></div>}
                    </div>
 
+                   <canvas ref={canvasRef} className="hidden" />
                    {/* Captions */}
-                   <div className="absolute bottom-32 left-0 w-full text-center px-4 z-20">
-                       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="inline-block max-w-2xl bg-black/60 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl">
-                           <p className="text-lg sm:text-xl font-medium text-white/90">{caption || "Listening for conversation..."}</p>
-                       </motion.div>
-                   </div>
+                  <div className="absolute bottom-32 left-0 w-full text-center px-4 z-20">
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="inline-block max-w-2xl bg-black/60 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl"
+                    >
+                      {/* 🆕 reset chip */}
+                      {signWords.length > 0 && (
+                        <div className="flex items-center justify-between mb-1 text-xs text-white/60">
+                          <span>Live sign transcript</span>
+                          <button
+                            onClick={() => {
+                              setSignWords([]);
+                              setLastSignLabel(null);
+                              setCaption('Listening for conversation...');
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                      <p className="text-lg sm:text-xl font-medium text-white/90">
+                        {caption || 'Listening for conversation...'}
+                      </p>
+                    </motion.div>
+                  </div>
+
 
                   {/* Controls */}
                   <div className="absolute bottom-8 left-0 w-full flex justify-center gap-6 z-30">
