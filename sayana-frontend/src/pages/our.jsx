@@ -21,9 +21,11 @@ const ToastProvider = ({ children }) => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className={`pointer-events-auto px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md text-sm font-medium ${
-                t.type === 'error' ? 'bg-red-900/80 border-red-500/50 text-white' :
-                t.type === 'success' ? 'bg-green-900/80 border-green-500/50 text-white' :
-                'bg-gray-900/80 border-white/20 text-white'
+                t.type === 'error'
+                  ? 'bg-red-900/80 border-red-500/50 text-white'
+                  : t.type === 'success'
+                  ? 'bg-green-900/80 border-green-500/50 text-white'
+                  : 'bg-gray-900/80 border-white/20 text-white'
               }`}
             >
               {t.msg}
@@ -69,15 +71,18 @@ async function apiCall(endpoint, { method = 'GET', body = null } = {}) {
     throw new Error('Network error. Please check your connection.');
   }
 
-  // Handle 401 Unauthorized globally
   if (res.status === 401) {
     localStorage.removeItem('token');
-    window.location.href = '/auth'; // Simple redirect
+    window.location.href = '/auth';
     throw new Error('Session expired');
   }
 
   let data = null;
-  try { data = await res.json(); } catch (e) { /* ignore empty responses */ }
+  try {
+    data = await res.json();
+  } catch (e) {
+    /* ignore empty responses */
+  }
 
   if (!res.ok) {
     throw new Error(data?.message || `Error ${res.status}: ${res.statusText}`);
@@ -88,31 +93,36 @@ async function apiCall(endpoint, { method = 'GET', body = null } = {}) {
 // --- 2. Icons & UI Components ---
 
 const icons = {
-  arrowLeft: (<path d="M15 19l-7-7 7-7" />),
-  send: (<><path d="M22 2L11 13" /><path d="M22 2l-7 20 1-7 7-13z" /></>),
-  news: (<circle cx="12" cy="12" r="10" />),
-  robot: (<rect x="6" y="6" width="12" height="12" rx="2" />),
-  mic: (<path d="M12 1v11" />),
-  micOff: (<path d="M3 3l18 18" />),
-  video: (<rect x="3" y="6" width="18" height="12" rx="2" />),
-  videoOff: (<path d="M3 3l18 18" />),
-  phoneOff: (<path d="M2 2l20 20" />),
-  chat: (<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
-  settings: (<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />),
-  logOut: (<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />),
-  trash: (<path d="M3 6h18" />)
+  arrowLeft: <path d="M15 19l-7-7 7-7" />,
+  send: (
+    <>
+      <path d="M22 2L11 13" />
+      <path d="M22 2l-7 20 1-7 7-13z" />
+    </>
+  ),
+  news: <circle cx="12" cy="12" r="10" />,
+  robot: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  mic: <path d="M12 1v11" />,
+  micOff: <path d="M3 3l18 18" />,
+  video: <rect x="3" y="6" width="18" height="12" rx="2" />,
+  videoOff: <path d="M3 3l18 18" />,
+  phoneOff: <path d="M2 2l20 20" />,
+  chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  settings: <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" />,
+  logOut: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />,
+  trash: <path d="M3 6h18" />
 };
 
 const Icon = ({ path, className = 'w-5 h-5', onClick }) => (
-  <svg 
+  <svg
     onClick={onClick}
-    xmlns="http://www.w3.org/2000/svg" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     className={className}
   >
     {path}
@@ -122,24 +132,29 @@ const Icon = ({ path, className = 'w-5 h-5', onClick }) => (
 const Input = (props) => (
   <input
     {...props}
-    className={`w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all ${props.className || ''}`}
+    className={`w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all ${
+      props.className || ''
+    }`}
   />
 );
 
-const GlassCard = ({ children, className = "", onClick }) => (
-  <div onClick={onClick} className={`bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl ${className}`}>
+const GlassCard = ({ children, className = '', onClick }) => (
+  <div
+    onClick={onClick}
+    className={`bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl ${className}`}
+  >
     {children}
   </div>
 );
 
-const GlassButton = ({ children, onClick, active, className = "" }) => (
+const GlassButton = ({ children, onClick, active, className = '' }) => (
   <button
     onClick={onClick}
-    className={`relative p-3 rounded-xl transition-all duration-300 ease-out border
-      ${active 
-        ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)]' 
+    className={`relative p-3 rounded-xl transition-all duration-300 ease-out border ${
+      active
+        ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(147,51,234,0.5)]'
         : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white hover:border-white/20'
-      } ${className}`}
+    } ${className}`}
   >
     {children}
   </button>
@@ -147,10 +162,10 @@ const GlassButton = ({ children, onClick, active, className = "" }) => (
 
 // --- 3. Feature Components ---
 
-// 🆕 added onFriendRequestsChange prop
+// Instagram-ish Messages UI
 const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
   const { addToast } = useToast();
-  const [chatView, setChatView] = useState('list');
+  const [chatView, setChatView] = useState('list'); // mobile: 'list' | 'conversation'
   const [friendsList, setFriendsList] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
@@ -195,7 +210,7 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
       const data = await apiCall('/api/friends/requests');
       const list = data || [];
       setFriendRequests(list);
-      onFriendRequestsChange?.(Array.isArray(list) ? list.length : 0); // 🆕 sync count up
+      onFriendRequestsChange?.(Array.isArray(list) ? list.length : 0);
     } catch (err) {
       console.error(err);
     } finally {
@@ -215,15 +230,17 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
     }
   };
 
-  // Search users by name/email and send request
   const searchUsers = async () => {
     const q = searchQuery.trim();
-    if (!q) { setSearchResults([]); return; }
+    if (!q) {
+      setSearchResults([]);
+      return;
+    }
     setSearchLoading(true);
     try {
       const data = await apiCall(`/api/friends/users/search?query=${encodeURIComponent(q)}`);
       setSearchResults(Array.isArray(data) ? data : []);
-    } catch (err) {
+    } catch {
       setSearchResults([]);
     } finally {
       setSearchLoading(false);
@@ -234,13 +251,13 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
     try {
       await apiCall('/api/friends/send-request', { method: 'POST', body: { to: userId } });
       addToast('Friend request sent', 'success');
-      setSearchResults(prev => prev.map(u => u._id === userId ? { ...u, _requested: true } : u));
-      // Refresh outgoing/incoming lists so UI reflects new state
+      setSearchResults((prev) =>
+        prev.map((u) => (u._id === userId ? { ...u, _requested: true } : u))
+      );
       fetchSentFriendRequests();
       fetchFriendRequests();
     } catch (err) {
       addToast(err.message || 'Failed to send request', 'error');
-      // If backend says already sent or already friends, sync lists to reflect current status
       fetchSentFriendRequests();
       fetchFriendRequests();
       fetchFriends();
@@ -250,9 +267,9 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
   const handleAcceptRequest = async (requestId) => {
     try {
       await apiCall('/api/friends/accept-request', { method: 'POST', body: { requestId } });
-      setFriendRequests(prev => {
-        const updated = prev.filter(r => r._id !== requestId);
-        onFriendRequestsChange?.(updated.length); // 🆕 update badge count
+      setFriendRequests((prev) => {
+        const updated = prev.filter((r) => r._id !== requestId);
+        onFriendRequestsChange?.(updated.length);
         return updated;
       });
       await fetchFriends();
@@ -265,9 +282,9 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
   const handleRejectRequest = async (requestId) => {
     try {
       await apiCall('/api/friends/reject-request', { method: 'POST', body: { requestId } });
-      setFriendRequests(prev => {
-        const updated = prev.filter(r => r._id !== requestId);
-        onFriendRequestsChange?.(updated.length); // 🆕 update badge count
+      setFriendRequests((prev) => {
+        const updated = prev.filter((r) => r._id !== requestId);
+        onFriendRequestsChange?.(updated.length);
         return updated;
       });
       addToast('Friend request rejected', 'success');
@@ -281,176 +298,289 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
     setChatView('conversation');
     try {
       const data = await apiCall(`/api/messages/${friend._id}`);
-      setMessages(prev => ({ ...prev, [friend._id]: data || [] }));
+      setMessages((prev) => ({ ...prev, [friend._id]: data || [] }));
     } catch (err) {
       addToast('Could not load messages', 'error');
-      setMessages(prev => ({ ...prev, [friend._id]: [] }));
+      setMessages((prev) => ({ ...prev, [friend._id]: [] }));
     }
   };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !activePartner) return;
-    
-    // Optimistic Update
+
     const tempId = Date.now();
-    const tempMsg = { _id: tempId, from: currentUser?._id, message: newMessage, createdAt: new Date() };
-    
-    setMessages(prev => ({
+    const tempMsg = {
+      _id: tempId,
+      from: currentUser?._id,
+      message: newMessage,
+      createdAt: new Date()
+    };
+
+    setMessages((prev) => ({
       ...prev,
       [activePartner._id]: [...(prev[activePartner._id] || []), tempMsg]
     }));
     setNewMessage('');
 
     try {
-      const data = await apiCall('/api/messages/send', {
+      await apiCall('/api/messages/send', {
         method: 'POST',
         body: { to: activePartner._id, message: tempMsg.message }
       });
-      // Assume success; could reconcile with server response if needed
-    } catch (err) {
+    } catch {
       addToast('Failed to send message', 'error');
-      // Rollback would go here
     }
   };
 
   return (
     <div className="flex flex-col h-full text-white">
-      <div className="flex items-center p-6 border-b border-white/10 bg-black/20">
-        <button onClick={chatView === 'conversation' ? () => setChatView('list') : onBack} className="p-2 hover:bg-white/10 rounded-full mr-4">
-          <Icon path={icons.arrowLeft} className="w-6 h-6" />
-        </button>
-        <h2 className="text-xl font-bold tracking-wide">
-          {chatView === 'conversation' ? activePartner?.name : 'Messages'}
-        </h2>
+      <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/40">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={chatView === 'conversation' ? () => setChatView('list') : onBack}
+            className="p-2 hover:bg-white/10 rounded-full md:hidden"
+          >
+            <Icon path={icons.arrowLeft} className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-semibold tracking-wide">Messages</h2>
+            <p className="text-xs text-white/50 hidden md:block">
+              Chat with your friends in SAYANA
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait">
-          {chatView === 'list' ? (
-            <motion.div 
-              key="list"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="h-full overflow-y-auto p-4 space-y-3"
+      <div className="flex flex-1 overflow-hidden bg-black/30 backdrop-blur-xl">
+        {/* Left: Conversations + Requests */}
+        <div
+          className={`${
+            chatView === 'conversation' ? 'hidden' : 'flex'
+          } md:flex md:w-80 flex-col border-r border-white/10 bg-black/40`}
+        >
+          <div className="p-4 border-b border-white/10">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name or email"
+              className="text-sm"
+            />
+            <button
+              onClick={searchUsers}
+              className="mt-2 w-full text-sm px-3 py-2 bg-white/10 rounded-lg hover:bg-white/15 transition"
             >
-              {loadingFriends ? (
-                <div className="p-4 text-center text-white/50">Loading friends...</div>
-              ) : (
-                friendsList.length === 0 ? <div className="p-4 text-center text-white/50">No friends yet. Add some!</div> :
-                friendsList.map(friend => (
-                  <GlassCard key={friend._id} className="p-4 flex items-center hover:bg-white/10 transition-colors cursor-pointer" onClick={() => openConversation(friend)}> 
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-lg font-bold uppercase">
+              Search
+            </button>
+            {searchLoading && (
+              <div className="mt-2 text-xs text-white/50">Searching...</div>
+            )}
+          </div>
+
+          {searchResults.length > 0 && (
+            <div className="px-4 py-3 border-b border-white/10 space-y-2 max-h-48 overflow-y-auto">
+              {searchResults.map((u) => {
+                const isFriend = friendsList.some((f) => f._id === u._id);
+                const incoming = friendRequests.some((r) => r.from?._id === u._id);
+                const outgoing = sentRequests.some((r) => r.to?._id === u._id);
+                const status = isFriend
+                  ? 'friend'
+                  : incoming
+                  ? 'incoming'
+                  : outgoing
+                  ? 'outgoing'
+                  : null;
+                return (
+                  <div
+                    key={u._id}
+                    className="flex items-center justify-between bg-white/5 rounded-xl p-2"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold">{u.name}</div>
+                      <div className="text-[11px] text-white/50">{u.email}</div>
+                    </div>
+                    {status === 'friend' && (
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-white/10 text-green-300 border border-white/10">
+                        Friend
+                      </span>
+                    )}
+                    {status === 'incoming' && (
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-yellow-900/40 text-yellow-200 border border-yellow-800/40">
+                        Incoming
+                      </span>
+                    )}
+                    {status === 'outgoing' && (
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-white/10 text-white/60 border border-white/10">
+                        Pending
+                      </span>
+                    )}
+                    {!status && (
+                      <button
+                        onClick={() => sendFriendRequest(u._id)}
+                        className="px-2 py-1 rounded text-[11px] bg-purple-600/80 hover:bg-purple-600"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 pt-4 pb-2 text-xs uppercase tracking-wider text-white/50 font-semibold">
+              Chats
+            </div>
+            {loadingFriends ? (
+              <div className="p-4 text-center text-white/50 text-sm">Loading friends...</div>
+            ) : friendsList.length === 0 ? (
+              <div className="p-4 text-center text-white/50 text-sm">
+                No friends yet. Add some!
+              </div>
+            ) : (
+              <div className="px-2 space-y-1">
+                {friendsList.map((friend) => (
+                  <button
+                    key={friend._id}
+                    onClick={() => openConversation(friend)}
+                    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/10 transition ${
+                      activePartner?._id === friend._id ? 'bg-white/10' : ''
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-sm font-semibold uppercase">
                       {friend.name?.[0] || '?'}
                     </div>
-                    <div className="ml-4 flex-1">
-                      <h3 className="font-semibold">{friend.name}</h3>
-                      <p className="text-sm text-white/50 truncate">
-                        {(messages[friend._id] || []).length > 0 
-                          ? messages[friend._id][messages[friend._id].length-1].message 
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{friend.name}</div>
+                      <div className="text-xs text-white/50 truncate">
+                        {(messages[friend._id] || []).length > 0
+                          ? messages[friend._id][messages[friend._id].length - 1].message
                           : 'Start a conversation'}
-                      </p>
+                      </div>
                     </div>
-                  </GlassCard>
-                ))
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Friend Requests */}
+            <div className="mt-4 border-t border-white/10 pt-3 px-4 pb-2">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs text-white/70 uppercase tracking-wider font-bold">
+                  Friend Requests
+                </h4>
+                {friendRequests.length > 0 && (
+                  <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/90 text-white uppercase tracking-wide">
+                    {friendRequests.length} New
+                  </span>
+                )}
+              </div>
+              {loadingRequests ? (
+                <div className="text-xs text-white/50">Loading...</div>
+              ) : friendRequests.length === 0 ? (
+                <div className="text-xs text-white/50 italic">No pending requests</div>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {friendRequests.map((req) => (
+                    <div
+                      key={req._id}
+                      className="p-2 bg-white/5 rounded-xl flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="text-sm font-medium">
+                          {req.from?.name || 'Unknown'}
+                        </div>
+                        <div className="text-[11px] text-white/50">
+                          {req.from?.email || ''}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleAcceptRequest(req._id)}
+                          className="px-2 py-1 bg-green-600/80 hover:bg-green-600 rounded text-[11px] transition"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleRejectRequest(req._id)}
+                          className="px-2 py-1 bg-red-600/80 hover:bg-red-600 rounded text-[11px] transition"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
+            </div>
 
-              {/* Friend Search */}
-              <div className="mt-6 border-t border-white/10 pt-4">
-                <h4 className="text-sm text-white/70 mb-3 uppercase tracking-wider font-bold">Add Friends</h4>
-                <div className="flex gap-3 mb-3">
-                  <Input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search by name or email" />
-                  <button onClick={searchUsers} className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20 transition">Search</button>
+            {/* Sent Requests */}
+            <div className="border-t border-white/10 pt-3 px-4 pb-4">
+              <h4 className="text-xs text-white/70 mb-2 uppercase tracking-wider font-bold">
+                Sent Requests
+              </h4>
+              {loadingSent ? (
+                <div className="text-xs text-white/50">Loading...</div>
+              ) : sentRequests.length === 0 ? (
+                <div className="text-xs text-white/50 italic">No sent requests</div>
+              ) : (
+                <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
+                  {sentRequests.map((req) => (
+                    <div
+                      key={req._id}
+                      className="p-2 bg-white/5 rounded-xl flex items-center justify-between"
+                    >
+                      <div className="text-sm font-medium">{req.to?.name || 'Unknown'}</div>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-white/60 border border-white/10">
+                        Pending
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                {searchLoading && <div className="text-sm text-white/50">Searching...</div>}
-                {!searchLoading && searchResults.length > 0 && (
-                  <div className="space-y-2">
-                    {searchResults.map(u => {
-                      const isFriend = friendsList.some(f => f._id === u._id);
-                      const incoming = friendRequests.some(r => r.from?._id === u._id);
-                      const outgoing = sentRequests.some(r => r.to?._id === u._id);
-                      const status = isFriend ? 'friend' : incoming ? 'incoming' : outgoing ? 'outgoing' : null;
-                      return (
-                        <div key={u._id} className="flex items-center justify-between bg-white/5 rounded-xl p-3">
-                          <div>
-                            <div className="font-semibold">{u.name}</div>
-                            <div className="text-xs text-white/50">{u.email}</div>
-                          </div>
-                          {status === 'friend' && <span className="px-3 py-1 rounded text-xs bg-white/10 text-green-300 border border-white/10">Friend</span>}
-                          {status === 'incoming' && <span className="px-3 py-1 rounded text-xs bg-yellow-900/40 text-yellow-200 border border-yellow-800/40">Incoming request</span>}
-                          {status === 'outgoing' && <span className="px-3 py-1 rounded text-xs bg-white/10 text-white/60 border border-white/10">Pending</span>}
-                          {!status && (
-                            <button onClick={() => sendFriendRequest(u._id)} className="px-3 py-1 rounded text-sm bg-purple-600/80 hover:bg-purple-600">Send Request</button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              )}
+            </div>
+          </div>
+        </div>
 
-              <div className="mt-6 border-t border-white/10 pt-4">
-                {/* 🆕 Add "X New" pill */}
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm text-white/70 uppercase tracking-wider font-bold">Friend Requests</h4>
-                  {friendRequests.length > 0 && (
-                    <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/90 text-white uppercase tracking-wide">
-                      {friendRequests.length} New
-                    </span>
-                  )}
-                </div>
-                {loadingRequests ? <div className="text-sm text-white/50">Loading...</div> : (
-                  friendRequests.length === 0 ? <div className="text-sm text-white/50 italic">No pending requests</div> : (
-                    friendRequests.map(req => (
-                      <div key={req._id} className="p-3 bg-white/5 rounded-xl flex items-center justify-between mb-2">
-                        <div>
-                          <div className="font-medium">{req.from?.name || 'Unknown'}</div>
-                          <div className="text-xs text-white/50">{req.from?.email}</div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleAcceptRequest(req._id)} className="px-3 py-1 bg-green-600/80 hover:bg-green-600 rounded text-sm transition">Accept</button>
-                          <button onClick={() => handleRejectRequest(req._id)} className="px-3 py-1 bg-red-600/80 hover:bg-red-600 rounded text-sm transition">Reject</button>
-                        </div>
-                      </div>
-                    ))
-                  )
-                )}
-              </div>
-
-              <div className="mt-6 border-t border-white/10 pt-4">
-                <h4 className="text-sm text-white/70 mb-3 uppercase tracking-wider font-bold">Sent Requests</h4>
-                {loadingSent ? <div className="text-sm text-white/50">Loading...</div> : (
-                  sentRequests.length === 0 ? <div className="text-sm text-white/50 italic">No sent requests</div> : (
-                    sentRequests.map(req => (
-                      <div key={req._id} className="p-3 bg-white/5 rounded-xl flex items-center justify-between mb-2">
-                        <div className="font-medium">{req.to?.name || 'Unknown'}</div>
-                        <span className="text-xs px-2 py-1 rounded bg-white/10 text-white/60 border border-white/10">Pending</span>
-                      </div>
-                    ))
-                  )
-                )}
-              </div>
-            </motion.div>
+        {/* Right: Conversation */}
+        <div
+          className={`${
+            chatView === 'conversation' ? 'flex' : 'hidden'
+          } md:flex flex-1 flex-col bg-black/60`}
+        >
+          {!activePartner ? (
+            <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
+              Select a chat on the left to start messaging.
+            </div>
           ) : (
-            <motion.div 
-              key="conversation"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="h-full flex flex-col"
-            >
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {(messages[activePartner?._id] || []).map((msg) => {
-                  // LOGIC FIX: Check against currentUser._id
+            <>
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-black/50">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-sm font-semibold uppercase">
+                  {activePartner.name?.[0] || '?'}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">{activePartner.name}</div>
+                  <div className="text-[11px] text-white/50 truncate max-w-[180px]">
+                    {activePartner.email}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {(messages[activePartner._id] || []).map((msg) => {
                   const isMe = msg.from === 'me' || msg.from === currentUser?._id;
-                  
                   return (
-                    <div key={msg._id || msg.id || Math.random()} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] px-5 py-3 rounded-2xl backdrop-blur-sm shadow-md ${
-                        isMe
-                        ? 'bg-purple-600 text-white rounded-br-sm' 
-                        : 'bg-white/10 border border-white/5 text-white/90 rounded-bl-sm'
-                      }`}>
+                    <div
+                      key={msg._id || msg.id || Math.random()}
+                      className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-md ${
+                          isMe
+                            ? 'bg-purple-600 text-white rounded-br-sm'
+                            : 'bg-white/10 border border-white/5 text-white/90 rounded-bl-sm'
+                        }`}
+                      >
                         {msg.message || msg.text}
                       </div>
                     </div>
@@ -458,21 +588,25 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
                 })}
                 <div ref={messagesEndRef} />
               </div>
-              <div className="p-4 bg-black/20 border-t border-white/10 flex gap-3">
-                <Input 
-                  value={newMessage} 
+
+              <div className="p-3 border-t border-white/10 bg-black/50 flex items-center gap-2">
+                <Input
+                  value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Type a message..." 
-                  autoFocus
+                  placeholder="Type a message..."
+                  className="text-sm"
                 />
-                <button onClick={handleSendMessage} className="p-3 bg-purple-600 rounded-xl hover:bg-purple-500 transition-colors shadow-lg shadow-purple-900/20">
-                  <Icon path={icons.send} className="w-6 h-6" />
+                <button
+                  onClick={handleSendMessage}
+                  className="p-3 bg-purple-600 rounded-xl hover:bg-purple-500 transition-colors shadow-lg shadow-purple-900/20"
+                >
+                  <Icon path={icons.send} className="w-5 h-5" />
                 </button>
               </div>
-            </motion.div>
+            </>
           )}
-        </AnimatePresence>
+        </div>
       </div>
     </div>
   );
@@ -487,60 +621,86 @@ const NewsInterface = ({ onBack }) => {
     setLoading(true);
     try {
       const data = await apiCall('/api/ai/news');
-      
+
       let items = [];
       if (data?.news && typeof data.news === 'string') {
-        // Robust parsing for AI numbered lists
-        items = data.news.split(/\d+\.\s+/).filter(Boolean).map((text, i) => {
-          const [titleLine, ...rest] = text.split('\n');
-          return {
-            id: `ai-${i}`,
-            title: titleLine?.trim() || `News Update ${i+1}`,
-            snippet: rest.join('\n').trim(),
-            source: 'AI Curated'
-          };
-        });
+        items = data.news
+          .split(/\d+\.\s+/)
+          .filter(Boolean)
+          .map((text, i) => {
+            const [titleLine, ...rest] = text.split('\n');
+            return {
+              id: `ai-${i}`,
+              title: titleLine?.trim() || `News Update ${i + 1}`,
+              snippet: rest.join('\n').trim(),
+              source: 'AI Curated'
+            };
+          });
       } else if (Array.isArray(data)) {
         items = data;
       }
-      
+
       setNewsItems(items);
-    } catch (err) {
+    } catch {
       addToast('Failed to load news', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchNews(); }, []);
+  useEffect(() => {
+    fetchNews();
+  }, []);
 
   return (
     <div className="flex flex-col h-full text-white">
-      <div className="flex items-center p-6 border-b border-white/10 bg-black/20">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full mr-4">
-          <Icon path={icons.arrowLeft} className="w-6 h-6" />
+      <div className="flex items-center p-4 border-b border-white/10 bg-black/40">
+        <button
+          onClick={onBack}
+          className="p-2 hover:bg-white/10 rounded-full mr-3"
+        >
+          <Icon path={icons.arrowLeft} className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-bold tracking-wide">Latest News</h2>
+        <div>
+          <h2 className="text-lg font-semibold tracking-wide">Latest News</h2>
+          <p className="text-xs text-white/50">Curated highlights for you</p>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
         {loading && (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 animate-pulse">
-             {[1,2,3].map(i => <div key={i} className="h-48 bg-white/5 rounded-2xl"></div>)}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-48 bg-white/5 rounded-2xl" />
+            ))}
           </div>
         )}
-        {!loading && newsItems.length === 0 && <div className="text-center text-white/50">No news available at the moment.</div>}
-        
+        {!loading && newsItems.length === 0 && (
+          <div className="text-center text-white/50">No news available at the moment.</div>
+        )}
+
         {!loading && newsItems.length > 0 && (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {newsItems.map(item => (
-              <GlassCard key={item.id} className="flex flex-col overflow-hidden group cursor-pointer hover:border-purple-500/50 transition-all h-full">
+            {newsItems.map((item) => (
+              <GlassCard
+                key={item.id}
+                className="flex flex-col overflow-hidden group cursor-pointer hover:border-purple-500/50 transition-all h-full"
+              >
                 <div className="h-32 bg-gradient-to-br from-purple-900/40 to-blue-900/40 flex items-center justify-center">
-                  <Icon path={icons.news} className="w-10 h-10 text-white/20 group-hover:text-white/60 transition-colors" />
+                  <Icon
+                    path={icons.news}
+                    className="w-10 h-10 text-white/20 group-hover:text-white/60 transition-colors"
+                  />
                 </div>
                 <div className="p-5 flex-1 flex flex-col">
-                  <h3 className="text-lg font-semibold mb-2 leading-tight text-purple-100">{item.title}</h3>
-                  <p className="text-sm text-white/60 mb-4 flex-1 line-clamp-4">{item.snippet}</p>
-                  <span className="text-xs text-purple-400 font-medium uppercase tracking-wider">{item.source}</span>
+                  <h3 className="text-base font-semibold mb-2 leading-tight text-purple-100">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs text-white/60 mb-4 flex-1 line-clamp-4">
+                    {item.snippet}
+                  </p>
+                  <span className="text-[10px] text-purple-400 font-medium uppercase tracking-wider">
+                    {item.source}
+                  </span>
                 </div>
               </GlassCard>
             ))}
@@ -551,10 +711,15 @@ const NewsInterface = ({ onBack }) => {
   );
 };
 
+// ChatGPT-ish Assistant UI
 const ChatbotInterface = ({ onBack }) => {
   const { addToast } = useToast();
   const [messages, setMessages] = useState([
-    { id: 'init', role: 'assistant', text: 'Hi! I am Sayana Bot. Ask me anything about our service.' }
+    {
+      id: 'init',
+      role: 'assistant',
+      text: 'Hi! I am Sayana Bot. Ask me anything about our service or sign-language communication.'
+    }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -567,7 +732,7 @@ const ChatbotInterface = ({ onBack }) => {
   const send = async () => {
     if (!input.trim()) return;
     const userMsg = { id: Date.now(), role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
@@ -577,48 +742,94 @@ const ChatbotInterface = ({ onBack }) => {
         body: { message: userMsg.text }
       });
       const reply = data?.reply || data?.response || 'I am processing your request...';
-      setMessages(prev => [...prev, { id: Date.now()+1, role: 'assistant', text: reply }]);
-    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, role: 'assistant', text: reply }
+      ]);
+    } catch {
       addToast('Bot failed to respond', 'error');
-      setMessages(prev => [...prev, { id: Date.now()+2, role: 'assistant', text: 'Sorry, I am having trouble connecting right now.' }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 2,
+          role: 'assistant',
+          text: 'Sorry, I am having trouble connecting right now.'
+        }
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full text-white">
-      <div className="flex items-center p-6 border-b border-white/10 bg-black/20">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full mr-4">
-          <Icon path={icons.arrowLeft} className="w-6 h-6" />
+    <div className="flex flex-col h-full text-white bg-gradient-to-b from-black/60 via-black/80 to-black">
+      <div className="flex items-center p-4 border-b border-white/10 bg-black/60">
+        <button
+          onClick={onBack}
+          className="p-2 hover:bg-white/10 rounded-full mr-3"
+        >
+          <Icon path={icons.arrowLeft} className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-bold tracking-wide">AI Assistant</h2>
+        <div>
+          <h2 className="text-lg font-semibold tracking-wide">AI Assistant</h2>
+          <p className="text-xs text-white/50">Chat with Sayana Bot</p>
+        </div>
       </div>
-      <div className="flex-1 p-6 overflow-y-auto flex flex-col gap-4">
-        {messages.map(m => (
-          <div key={m.id} className={`p-4 rounded-2xl max-w-[85%] ${m.role === 'user' ? 'bg-purple-700 text-white self-end rounded-br-none' : 'bg-white/10 text-gray-100 self-start rounded-bl-none'}`}>
-            {m.text}
-          </div>
-        ))}
-        {loading && (
-          <div className="p-4 bg-white/10 rounded-2xl rounded-bl-none self-start flex gap-1 items-center">
-            <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce"></span>
-            <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-75"></span>
-            <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-150"></span>
-          </div>
-        )}
-        <div ref={scrollRef} />
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={`flex ${
+                m.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
+            >
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  m.role === 'user'
+                    ? 'bg-purple-600 text-white rounded-br-md'
+                    : 'bg-white/5 text-gray-100 rounded-bl-md border border-white/10'
+                }`}
+              >
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="p-3 bg-white/5 rounded-2xl rounded-bl-md flex gap-1 items-center">
+                <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce" />
+                <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-75" />
+                <span className="w-2 h-2 bg-white/50 rounded-full animate-bounce delay-150" />
+              </div>
+            </div>
+          )}
+          <div ref={scrollRef} />
+        </div>
       </div>
-      <div className="p-4 border-t border-white/10 flex items-center gap-3 bg-black/20">
-        <Input 
-          value={input} 
-          onChange={e=>setInput(e.target.value)} 
-          placeholder="Ask something..." 
-          onKeyPress={(e) => e.key === 'Enter' && !loading && send()}
-        />
-        <button onClick={send} disabled={loading} className="px-4 py-3 bg-purple-600 rounded-xl flex items-center justify-center disabled:opacity-50 hover:bg-purple-500 transition">
-             {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Icon path={icons.send} className="w-5 h-5" />}
-        </button>
+
+      <div className="border-t border-white/10 bg-black/80">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask something about SAYANA..."
+            onKeyPress={(e) => e.key === 'Enter' && !loading && send()}
+            className="text-sm"
+          />
+          <button
+            onClick={send}
+            disabled={loading}
+            className="px-4 py-3 bg-purple-600 rounded-xl flex items-center justify-center disabled:opacity-50 hover:bg-purple-500 transition shadow-lg shadow-purple-900/40"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Icon path={icons.send} className="w-5 h-5" />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -626,14 +837,17 @@ const ChatbotInterface = ({ onBack }) => {
 
 const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
   const { addToast } = useToast();
-  
+
   const changeUsername = async () => {
-    const newName = prompt('Enter new username:', currentUser?.username || currentUser?.name);
+    const newName = prompt(
+      'Enter new username:',
+      currentUser?.username || currentUser?.name
+    );
     if (!newName) return;
     try {
       await apiCall('/api/settings/username', {
         method: 'PUT',
-        body: { name: newName } 
+        body: { name: newName }
       });
       addToast('Username updated successfully', 'success');
       refreshUser();
@@ -665,7 +879,7 @@ const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
       await apiCall('/api/settings/account', { method: 'DELETE' });
       localStorage.removeItem('token');
       window.location.href = '/auth';
-    } catch (err) {
+    } catch {
       addToast('Failed to delete account', 'error');
     }
   };
@@ -677,31 +891,57 @@ const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
 
   return (
     <div className="flex flex-col h-full text-white">
-      <div className="flex items-center p-6 border-b border-white/10 bg-black/20">
-        <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-full mr-4">
-          <Icon path={icons.arrowLeft} className="w-6 h-6" />
+      <div className="flex items-center p-4 border-b border-white/10 bg-black/40">
+        <button
+          onClick={onBack}
+          className="p-2 hover:bg-white/10 rounded-full mr-3"
+        >
+          <Icon path={icons.arrowLeft} className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-bold tracking-wide">Settings</h2>
+        <div>
+          <h2 className="text-lg font-semibold tracking-wide">Settings</h2>
+          <p className="text-xs text-white/50">Manage your SAYANA account</p>
+        </div>
       </div>
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
         <GlassCard className="p-6">
-          <h3 className="text-lg font-semibold mb-6 border-b border-white/10 pb-2">Profile</h3>
-          <div className="grid gap-6">
+          <h3 className="text-lg font-semibold mb-4 border-b border-white/10 pb-2">
+            Profile
+          </h3>
+          <div className="grid gap-5">
             <div>
-              <label className="block text-xs uppercase tracking-wider text-white/40 mb-1">Display Name</label>
+              <label className="block text-xs uppercase tracking-wider text-white/40 mb-1">
+                Display Name
+              </label>
               <div className="flex justify-between items-center">
-                <span className="text-lg">{currentUser?.name || currentUser?.username || 'Loading...'}</span>
-                <button onClick={changeUsername} className="text-purple-400 hover:text-purple-300 text-sm font-medium">Edit</button>
+                <span className="text-lg">
+                  {currentUser?.name || currentUser?.username || 'Loading...'}
+                </span>
+                <button
+                  onClick={changeUsername}
+                  className="text-purple-400 hover:text-purple-300 text-sm font-medium"
+                >
+                  Edit
+                </button>
               </div>
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wider text-white/40 mb-1">Email Address</label>
+              <label className="block text-xs uppercase tracking-wider text-white/40 mb-1">
+                Email Address
+              </label>
               <div className="flex justify-between items-center">
-                <span className="text-lg text-white/80">{currentUser?.email || 'Loading...'}</span>
+                <span className="text-lg text-white/80">
+                  {currentUser?.email || 'Loading...'}
+                </span>
               </div>
             </div>
             <div className="pt-2">
-               <button onClick={changePassword} className="text-sm bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg transition">Change Password</button>
+              <button
+                onClick={changePassword}
+                className="text-sm bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg transition"
+              >
+                Change Password
+              </button>
             </div>
           </div>
         </GlassCard>
@@ -709,11 +949,17 @@ const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
         <GlassCard className="p-6 border-red-500/20">
           <h3 className="text-lg font-semibold mb-4 text-red-400">Danger Zone</h3>
           <div className="flex flex-col sm:flex-row gap-4">
-            <button onClick={logout} className="px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10 transition flex items-center justify-center flex-1">
-              <Icon path={icons.logOut} className="w-4 h-4 mr-2"/> Log Out
+            <button
+              onClick={logout}
+              className="px-4 py-3 bg-white/5 rounded-xl hover:bg-white/10 transition flex items-center justify-center flex-1"
+            >
+              <Icon path={icons.logOut} className="w-4 h-4 mr-2" /> Log Out
             </button>
-            <button onClick={deleteAccount} className="px-4 py-3 bg-red-900/50 text-red-200 border border-red-800/50 rounded-xl hover:bg-red-900/80 transition flex items-center justify-center flex-1">
-              <Icon path={icons.trash} className="w-4 h-4 mr-2"/> Delete Account
+            <button
+              onClick={deleteAccount}
+              className="px-4 py-3 bg-red-900/50 text-red-200 border border-red-800/50 rounded-xl hover:bg-red-900/80 transition flex items-center justify-center flex-1"
+            >
+              <Icon path={icons.trash} className="w-4 h-4 mr-2" /> Delete Account
             </button>
           </div>
         </GlassCard>
@@ -726,32 +972,27 @@ const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
 
 function AppContent() {
   const { addToast } = useToast();
-  const [activePage, setActivePage] = useState('camera');
+  const [activePage, setActivePage] = useState('camera'); // 'camera' | 'chat' | 'news' | 'chatbot' | 'settings'
   const [currentUser, setCurrentUser] = useState(null);
-  const [callStatus, setCallStatus] = useState('Connecting...');
-  const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [caption, setCaption] = useState('');
-  const [pendingFriendCount, setPendingFriendCount] = useState(0); // 🆕 badge count
+  const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [signWords, setSignWords] = useState([]);
   const [lastSignLabel, setLastSignLabel] = useState(null);
   const [lastSignTime, setLastSignTime] = useState(0);
 
   const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const detectingRef = useRef(false);
-  const signDetectDisabledRef = useRef(false);
-  // Fetch Current User on Mount
+
   const refreshUser = async () => {
     try {
-      const data = await apiCall('/api/settings/profile'); // Or /api/auth/me depending on backend
+      const data = await apiCall('/api/settings/profile');
       const user = data?.user || data;
-      if (!user?._id && user?.id) user._id = user.id; // normalize id
+      if (!user?._id && user?.id) user._id = user.id;
       setCurrentUser(user);
     } catch (err) {
-      // Fallback: try debug whoami to at least get minimal identity
       try {
         const who = await apiCall('/api/debug/whoami');
         const user = { _id: who.id, name: who.name, email: who.email };
@@ -762,7 +1003,6 @@ function AppContent() {
     }
   };
 
-  // 🆕 Get pending friend requests count (for initial badge + polling)
   const refreshPendingFriends = async () => {
     try {
       const data = await apiCall('/api/friends/requests');
@@ -776,14 +1016,11 @@ function AppContent() {
     refreshUser();
     refreshPendingFriends();
 
-    // Optional: live-ish updates like Instagram
-    // Poll less frequently (every 60s) and only when the page is visible to reduce constant GET traffic
     const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return; // pause when tab hidden
+      if (typeof document !== 'undefined' && document.hidden) return;
       refreshPendingFriends();
-    }, 60000); // every 60 seconds
+    }, 60000);
 
-    // Refresh immediately when tab becomes visible again
     const onVisibility = () => {
       if (!document.hidden) refreshPendingFriends();
     };
@@ -795,34 +1032,6 @@ function AppContent() {
     };
   }, []);
 
-  // Simulation of Call Timer
-  useEffect(() => {
-    const timer = setTimeout(() => setCallStatus('00:00'), 2000);
-    const interval = setInterval(() => {
-      if (callStatus !== 'Connecting...' && callStatus !== 'Call Ended') {
-        const [m, s] = callStatus.split(':').map(Number);
-        let ns = (s || 0) + 1;
-        let nm = m || 0;
-        if (ns > 59) { ns = 0; nm++; }
-        setCallStatus(`${nm < 10 ? '0'+nm : nm}:${ns < 10 ? '0'+ns : ns}`);
-      }
-    }, 1000);
-    return () => { clearTimeout(timer); clearInterval(interval); };
-  }, [callStatus]);
-
-   const handleEndCall = () => {
-    setCallStatus('Call Ended');
-    addToast('Call ended', 'info');
-    // 🆕 reset sentence
-    setSignWords([]);
-    setLastSignLabel(null);
-    setCaption('');
-    setTimeout(() => {
-       setCallStatus('00:00'); 
-    }, 2000);
-  };
-
-    // 🆕 Start local camera stream
   const startLocalStream = async () => {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -830,12 +1039,11 @@ function AppContent() {
         return;
       }
 
-      // If already streaming, don't start again
       if (streamRef.current) return;
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: false, // we don't need audio for sign detection
+        audio: false
       });
 
       streamRef.current = stream;
@@ -850,36 +1058,32 @@ function AppContent() {
     }
   };
 
-  // 🆕 Stop local camera stream
   const stopLocalStream = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
   };
 
-    // 🆕 Manage camera lifecycle
   useEffect(() => {
     if (activePage === 'camera' && !isVideoOff) {
       startLocalStream();
     } else {
-      // If we leave the camera page or turn video off, stop the stream
       stopLocalStream();
     }
 
-    // Cleanup on unmount
     return () => {
       stopLocalStream();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage, isVideoOff]);
 
-   // 🆕 Periodically capture frame & send to /api/ai/sign-detect
+  // Sign-detect loop
   useEffect(() => {
     if (activePage !== 'camera') return;
 
-    const intervalMs = 5000;               // every 5 seconds
-    const MAX_CALLS_PER_SESSION = 20;      // safety cap per session
+    const intervalMs = 5000;
+    const MAX_CALLS_PER_SESSION = 20;
     let callCount = 0;
     let stoppedDueToQuota = false;
 
@@ -890,7 +1094,7 @@ function AppContent() {
       if (isVideoOff) return;
       if (!localVideoRef.current || !canvasRef.current) return;
       if (!streamRef.current) return;
-      if (detectingRef.current) return; // avoid overlapping calls
+      if (detectingRef.current) return;
 
       detectingRef.current = true;
       try {
@@ -909,50 +1113,40 @@ function AppContent() {
 
         const res = await apiCall('/api/ai/sign-detect', {
           method: 'POST',
-          body: { image: base64 },
+          body: { image: base64 }
         });
 
         callCount += 1;
 
-        // 🆕 If backend returns a label, treat it as a "word"
         if (res?.label) {
           const label = String(res.label).trim();
           const now = Date.now();
 
-          // optional: ignore low-confidence detections
-          const confidence = typeof res.confidence === 'number' ? res.confidence : 0;
+          const confidence =
+            typeof res.confidence === 'number' ? res.confidence : 0;
           if (!label || confidence < 0.5) {
-            // keep existing sentence, just show "listening..."
             if (!signWords.length) {
               setCaption('Listening for conversation...');
             }
             return;
           }
 
-          // Debounce: don't push same word too rapidly
-          const MIN_GAP_MS = 1500; // at least 1.5s between same word
-          if (
-            label === lastSignLabel &&
-            now - lastSignTime < MIN_GAP_MS
-          ) {
-            // too soon & same word; ignore
+          const MIN_GAP_MS = 1500;
+          if (label === lastSignLabel && now - lastSignTime < MIN_GAP_MS) {
             return;
           }
 
           setLastSignLabel(label);
           setLastSignTime(now);
 
-          setSignWords(prev => {
-            // also prevent immediate duplicates at array end
+          setSignWords((prev) => {
             if (prev[prev.length - 1] === label) return prev;
             const next = [...prev, label];
-            // build human-readable sentence
             const sentence = next.join(' ');
             setCaption(sentence);
             return next;
           });
         } else if (res?.raw) {
-          // If backend falls back to raw text, you can optionally show it
           if (!signWords.length) {
             setCaption(res.raw);
           }
@@ -966,8 +1160,13 @@ function AppContent() {
 
         if (err?.message?.includes('429')) {
           stoppedDueToQuota = true;
-          setCaption('Sign detection paused due to AI usage limits. Please try again later.');
-          addToast('Sign detection limit reached for now. Try again later.', 'info');
+          setCaption(
+            'Sign detection paused due to AI usage limits. Please try again later.'
+          );
+          addToast(
+            'Sign detection limit reached for now. Try again later.',
+            'info'
+          );
         }
       } finally {
         detectingRef.current = false;
@@ -982,12 +1181,14 @@ function AppContent() {
     addToast,
     signWords.length,
     lastSignLabel,
-    lastSignTime,
+    lastSignTime
   ]);
 
-
-
-
+  const resetTranscript = () => {
+    setSignWords([]);
+    setLastSignLabel(null);
+    setCaption('Listening for conversation...');
+  };
 
   return (
     <div className="relative w-full h-screen bg-[#040307] text-white overflow-hidden font-sans">
@@ -1001,56 +1202,61 @@ function AppContent() {
       <div className="relative z-10 flex w-full h-full">
         <div className="flex-1 relative flex flex-col">
           {/* Header */}
-          <header className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-30 pointer-events-none">
+          <header className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-30 pointer-events-none">
             <div className="pointer-events-auto flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-white">SAYANA</h1>
+              <h1 className="text-2xl font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-white">
+                SAYANA
+              </h1>
             </div>
-            {activePage === 'camera' && (
-              <div className="px-4 py-2 bg-black/40 backdrop-blur-md rounded-full border border-white/10 pointer-events-auto shadow-lg">
-                <span className="text-sm font-mono text-purple-300 flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${callStatus === 'Call Ended' ? 'bg-red-500' : 'bg-green-500 animate-pulse'}`}></span>
-                  {callStatus}
-                </span>
-              </div>
-            )}
           </header>
 
-          <main className="w-full h-full relative">
+          <main className="w-full h-full relative pt-12">
             <AnimatePresence mode="wait">
+              {/* Sign Studio */}
               {activePage === 'camera' && (
-                <motion.div key="camera" className="w-full h-full flex items-center justify-center relative" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                   {/* Simulated Remote Video */}
-                   <div className="w-full h-full bg-gray-900 flex items-center justify-center">
-                      <video ref={remoteVideoRef} autoPlay muted playsInline className="w-full h-full object-cover opacity-80" />
-                      {!remoteVideoRef.current?.srcObject && <div className="absolute text-white/20 text-6xl font-bold uppercase tracking-widest">Waiting for Video...</div>}
-                   </div>
-                   
-                   <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
-                   
-                   {/* Local PIP */}
-                   <div className="absolute top-24 right-6 w-32 h-48 sm:w-48 sm:h-72 bg-black/50 backdrop-blur-xl rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-20">
-                      <video ref={localVideoRef} autoPlay muted playsInline className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`} />
-                      {isVideoOff && <div className="w-full h-full flex items-center justify-center text-white/50"><Icon path={icons.videoOff} className="w-8 h-8" /></div>}
-                   </div>
+                <motion.div
+                  key="camera"
+                  className="w-full h-full flex items-center justify-center relative"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <div className="w-full h-full bg-black flex items-center justify-center">
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className={`w-full h-full object-cover ${
+                        isVideoOff ? 'opacity-0' : 'opacity-100'
+                      } transition-opacity duration-300`}
+                    />
+                    {(!streamRef.current || isVideoOff) && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 text-white/60 bg-black/60 backdrop-blur-sm">
+                        <p className="text-lg font-semibold mb-2">
+                          Camera is off
+                        </p>
+                        <p className="text-sm text-white/50 mb-4 max-w-md">
+                          Turn on your camera to start live sign detection.
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
-                   <canvas ref={canvasRef} className="hidden" />
-                   {/* Captions */}
-                  <div className="absolute bottom-32 left-0 w-full text-center px-4 z-20">
+                  <canvas ref={canvasRef} className="hidden" />
+
+                  {/* Captions */}
+                  <div className="absolute bottom-28 left-0 w-full text-center px-4 z-20">
                     <motion.div
                       initial={{ y: 20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
-                      className="inline-block max-w-2xl bg-black/60 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl"
+                      className="inline-block max-w-2xl bg-black/70 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl shadow-xl"
                     >
-                      {/* 🆕 reset chip */}
                       {signWords.length > 0 && (
-                        <div className="flex items-center justify-between mb-1 text-xs text-white/60">
+                        <div className="flex items-center justify-between mb-1 text-[11px] text-white/60">
                           <span>Live sign transcript</span>
                           <button
-                            onClick={() => {
-                              setSignWords([]);
-                              setLastSignLabel(null);
-                              setCaption('Listening for conversation...');
-                            }}
+                            onClick={resetTranscript}
                             className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 hover:bg-white/20"
                           >
                             Clear
@@ -1063,47 +1269,88 @@ function AppContent() {
                     </motion.div>
                   </div>
 
-
                   {/* Controls */}
-                  <div className="absolute bottom-8 left-0 w-full flex justify-center gap-6 z-30">
-                    <GlassButton onClick={() => setIsMuted(!isMuted)} active={!isMuted} className="!rounded-full w-14 h-14 flex items-center justify-center">
-                        <Icon path={isMuted ? icons.micOff : icons.mic} className="w-6 h-6" />
+                  <div className="absolute bottom-6 left-0 w-full flex justify-center gap-4 z-30">
+                    <GlassButton
+                      onClick={() => setIsVideoOff((v) => !v)}
+                      active={!isVideoOff}
+                      className="!rounded-full w-14 h-14 flex items-center justify-center"
+                    >
+                      <Icon
+                        path={isVideoOff ? icons.videoOff : icons.video}
+                        className="w-6 h-6"
+                      />
                     </GlassButton>
-                    <GlassButton onClick={() => setIsVideoOff(!isVideoOff)} active={!isVideoOff} className="!rounded-full w-14 h-14 flex items-center justify-center">
-                        <Icon path={isVideoOff ? icons.videoOff : icons.video} className="w-6 h-6" />
-                    </GlassButton>
-                    <button onClick={handleEndCall} className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-lg transition-all hover:scale-105">
-                        <Icon path={icons.phoneOff} className="w-8 h-8" />
-                    </button>
+
+                    <div className="px-4 py-2 rounded-full bg-black/70 border border-white/15 text-xs flex items-center gap-2 backdrop-blur-md">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="uppercase tracking-wider font-semibold text-white/70">
+                        {isVideoOff
+                          ? 'Detection paused'
+                          : 'Detecting signs...'}
+                      </span>
+                    </div>
                   </div>
                 </motion.div>
               )}
 
               {activePage === 'chat' && (
-                <motion.div key="chat" className="w-full h-full pt-20 bg-black/40 backdrop-blur-xl" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
+                <motion.div
+                  key="chat"
+                  className="w-full h-full bg-black/40 backdrop-blur-xl"
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                >
                   <ChatInterface
                     onBack={() => setActivePage('camera')}
                     currentUser={currentUser}
-                    onFriendRequestsChange={setPendingFriendCount} // 🆕 keep badge in sync
+                    onFriendRequestsChange={setPendingFriendCount}
                   />
                 </motion.div>
               )}
 
               {activePage === 'news' && (
-                <motion.div key="news" className="w-full h-full pt-20 bg-black/40 backdrop-blur-xl" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
+                <motion.div
+                  key="news"
+                  className="w-full h-full bg-black/40 backdrop-blur-xl"
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                >
                   <NewsInterface onBack={() => setActivePage('camera')} />
                 </motion.div>
               )}
 
               {activePage === 'chatbot' && (
-                <motion.div key="chatbot" className="w-full h-full pt-20 bg-black/40 backdrop-blur-xl" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
+                <motion.div
+                  key="chatbot"
+                  className="w-full h-full bg-black/40 backdrop-blur-xl"
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                >
                   <ChatbotInterface onBack={() => setActivePage('camera')} />
                 </motion.div>
               )}
 
               {activePage === 'settings' && (
-                <motion.div key="settings" className="w-full h-full pt-20 bg-black/40 backdrop-blur-xl" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
-                  <SettingsInterface onBack={() => setActivePage('camera')} currentUser={currentUser} refreshUser={refreshUser} />
+                <motion.div
+                  key="settings"
+                  className="w-full h-full bg-black/40 backdrop-blur-xl"
+                  initial={{ x: '100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                >
+                  <SettingsInterface
+                    onBack={() => setActivePage('camera')}
+                    currentUser={currentUser}
+                    refreshUser={refreshUser}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1113,26 +1360,31 @@ function AppContent() {
         {/* Sidebar Nav */}
         <div className="absolute right-6 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-5">
           {[
-            { id: 'camera', icon: icons.video, label: 'Video Call' },
+            { id: 'camera', icon: icons.video, label: 'Sign Studio' },
             { id: 'chat', icon: icons.chat, label: 'Messages' },
             { id: 'news', icon: icons.news, label: 'News Feed' },
             { id: 'chatbot', icon: icons.robot, label: 'AI Assistant' },
-            { id: 'settings', icon: icons.settings, label: 'Preferences' },
-          ].map(item => (
-            <div key={item.id} className="relative group flex items-center justify-end">
-                <span className="absolute right-14 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-x-2 group-hover:translate-x-0 text-xs font-bold uppercase tracking-wider text-purple-200 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg mr-2 pointer-events-none whitespace-nowrap border border-white/10 shadow-xl">
-                  {item.label}
-                </span>
+            { id: 'settings', icon: icons.settings, label: 'Preferences' }
+          ].map((item) => (
+            <div
+              key={item.id}
+              className="relative group flex items-center justify-end"
+            >
+              <span className="absolute right-14 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-x-2 group-hover:translate-x-0 text-xs font-bold uppercase tracking-wider text-purple-200 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg mr-2 pointer-events-none whitespace-nowrap border border-white/10 shadow-xl">
+                {item.label}
+              </span>
               <button
                 onClick={() => setActivePage(item.id)}
                 className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 backdrop-blur-md border ${
-                  activePage === item.id ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_20px_rgba(147,51,234,0.6)] scale-110' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white hover:border-white/30'
+                  activePage === item.id
+                    ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_20px_rgba(147,51,234,0.6)] scale-110'
+                    : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white hover:border-white/30'
                 }`}
               >
                 <Icon path={item.icon} />
               </button>
 
-              {/* 🆕 Red ping badge on Messages */}
+              {/* Badge on Messages */}
               {item.id === 'chat' && pendingFriendCount > 0 && (
                 <span className="absolute -top-1 -right-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-[10px] font-bold text-white shadow-lg border border-black/50">
                   {pendingFriendCount > 9 ? '9+' : pendingFriendCount}
