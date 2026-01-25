@@ -13,3 +13,7 @@ yarn-error.log*
 # Build folders
 dist/
 build/
+venv/
+.venv/
+python/venv/
+python/.venv/
