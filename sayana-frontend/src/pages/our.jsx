@@ -1118,13 +1118,25 @@ function AppContent() {
 
         callCount += 1;
 
-        if (res?.label) {
-          const label = String(res.label).trim();
+        const resolvedLabel =
+          (typeof res?.latestLabel === 'string' && res.latestLabel.trim()) ||
+          (typeof res?.label === 'string' && res.label.trim()) ||
+          '';
+        const resolvedConfidence =
+          typeof res?.latestConfidence === 'number'
+            ? res.latestConfidence
+            : typeof res?.confidence === 'number'
+            ? res.confidence
+            : 0;
+        const resolvedRaw =
+          (typeof res?.latestRaw === 'string' && res.latestRaw.trim()) ||
+          (typeof res?.raw === 'string' && res.raw.trim()) ||
+          '';
+
+        if (resolvedLabel) {
           const now = Date.now();
 
-          const confidence =
-            typeof res.confidence === 'number' ? res.confidence : 0;
-          if (!label || confidence < 0.5) {
+          if (resolvedConfidence < 0.5) {
             if (!signWords.length) {
               setCaption('Listening for conversation...');
             }
@@ -1132,23 +1144,23 @@ function AppContent() {
           }
 
           const MIN_GAP_MS = 1500;
-          if (label === lastSignLabel && now - lastSignTime < MIN_GAP_MS) {
+          if (resolvedLabel === lastSignLabel && now - lastSignTime < MIN_GAP_MS) {
             return;
           }
 
-          setLastSignLabel(label);
+          setLastSignLabel(resolvedLabel);
           setLastSignTime(now);
 
           setSignWords((prev) => {
-            if (prev[prev.length - 1] === label) return prev;
-            const next = [...prev, label];
+            if (prev[prev.length - 1] === resolvedLabel) return prev;
+            const next = [...prev, resolvedLabel];
             const sentence = next.join(' ');
             setCaption(sentence);
             return next;
           });
-        } else if (res?.raw) {
+        } else if (resolvedRaw) {
           if (!signWords.length) {
-            setCaption(res.raw);
+            setCaption(resolvedRaw);
           }
         } else {
           if (!signWords.length) {

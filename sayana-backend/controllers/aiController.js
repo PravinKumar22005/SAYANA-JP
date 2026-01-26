@@ -1,111 +1,12 @@
 // controllers/aiController.js
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-/**
- * API KEY MANAGEMENT
- * ------------------
- * Supports:
- *  - GEMINI_API_KEYS = key1,key2,key3
- *  - GEMINI_API_KEY = key1,key2 (also allowed, but prefer *_KEYS)
- *  - GOOGLE_API_KEY = single key
- */
-
-const rawKeysEnv =
-  process.env.GEMINI_API_KEYS ||
-  process.env.GEMINI_API_KEY ||
-  process.env.GOOGLE_API_KEY ||
-  '';
-
-const apiKeys = rawKeysEnv
-  .split(',')
-  .map((k) => k.trim())
-  .filter(Boolean);
-
-const hasKeys = apiKeys.length > 0;
-
-if (!hasKeys) {
-  console.warn(
-    '[AI] No Gemini API keys configured. Set GEMINI_API_KEYS / GEMINI_API_KEY / GOOGLE_API_KEY in .env.'
-  );
-} else {
-  console.log(
-    `[AI] Loaded ${apiKeys.length} Gemini API key(s) from environment.`
-  );
-}
-
-const resolveModelPriority = () => {
-  const requested = (process.env.GEMINI_MODEL || '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
-  const defaults = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-1.5-flash',
-  ];
-  const models = [];
-  const seen = new Set();
-  for (const name of [...requested, ...defaults]) {
-    if (!name || seen.has(name)) continue;
-    models.push(name);
-    seen.add(name);
-  }
-  return models;
-};
-
-/**
- * Helper to call Gemini with simple retry: if first key fails, try another.
- */
-async function generateWithRetry(promptText) {
-  if (!hasKeys) {
-    throw new Error('No API keys configured');
-  }
-
-  const models = resolveModelPriority();
-  let lastError = null;
-
-  for (const apiKey of apiKeys) {
-    for (const modelName of models) {
-      try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent(promptText);
-        const response = await result.response;
-        const text = response.text();
-        if (modelName !== (process.env.GEMINI_MODEL || models[0])) {
-          console.info(
-            `[AI] Falling back to model "${modelName}" for prompt generation.`
-          );
-        }
-        return text;
-      } catch (err) {
-        const message = err?.message || String(err);
-        const status = err?.response?.status || err?.status;
-        console.error(
-          `[AI] Error using model "${modelName}" with key ending "${apiKey.slice(-4)}":`,
-          message
-        );
-        lastError = err;
-        const isQuota = status === 429 || /RESOURCE_EXHAUSTED/i.test(message);
-        const isRateLimit = /quota/i.test(message) || /rate/i.test(message);
-        // For quota/rate-limit errors, try next model or key
-        if (isQuota || isRateLimit) {
-          continue;
-        }
-        // For other errors, also try next model/key but keep lastError
-      }
-    }
-  }
-
-  throw lastError || new Error('Gemini generation failed for all configured keys/models');
-}
+const { hasGeminiKeys, generateWithRetry } = require('../services/geminiClient');
 
 /**
  * GET /api/ai/news
  * Returns AI-generated news summary, or a dev fallback if keys are missing.
  */
 exports.getNews = async (req, res) => {
-  if (!hasKeys) {
+  if (!hasGeminiKeys) {
     // Dev-mode fallback so UI still works
     return res.json({
       news:
@@ -151,7 +52,7 @@ exports.getChatbotResponse = async (req, res) => {
     }
 
     // If no keys, dev fallback: echo behavior so frontend doesn't break
-    if (!hasKeys) {
+    if (!hasGeminiKeys) {
       return res.json({
         reply:
           `Dev mode reply (no Gemini API keys configured on backend).\n\n` +
