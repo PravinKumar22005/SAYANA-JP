@@ -615,33 +615,95 @@ const ChatInterface = ({ onBack, currentUser, onFriendRequestsChange }) => {
 const NewsInterface = ({ onBack }) => {
   const { addToast } = useToast();
   const [newsItems, setNewsItems] = useState([]);
+  const [highlightItems, setHighlightItems] = useState([]);
+  const [summary, setSummary] = useState('');
+  const [meta, setMeta] = useState({ generatedAt: '', model: '' });
   const [loading, setLoading] = useState(true);
+
+  const parseLegacyNews = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    return text
+      .split(/\d+\.\s+/)
+      .filter(Boolean)
+      .map((entry, index) => {
+        const [titleLine, ...rest] = entry.split('\n');
+        return {
+          id: `legacy-${index}`,
+          title: titleLine?.trim() || `News Update ${index + 1}`,
+          snippet: rest.join('\n').trim(),
+          source: 'AI Digest',
+          topic: 'Highlights'
+        };
+      });
+  };
+
+  const formatTimestamp = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatDate = (value) => {
+    if (!value) return 'Just now';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  const openArticle = (url) => {
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const fetchNews = async () => {
     setLoading(true);
     try {
       const data = await apiCall('/api/ai/news');
-
       let items = [];
-      if (data?.news && typeof data.news === 'string') {
-        items = data.news
-          .split(/\d+\.\s+/)
-          .filter(Boolean)
-          .map((text, i) => {
-            const [titleLine, ...rest] = text.split('\n');
-            return {
-              id: `ai-${i}`,
-              title: titleLine?.trim() || `News Update ${i + 1}`,
-              snippet: rest.join('\n').trim(),
-              source: 'AI Curated'
-            };
-          });
+
+      if (Array.isArray(data?.items)) {
+        items = data.items;
       } else if (Array.isArray(data)) {
         items = data;
+      } else if (typeof data?.news === 'string') {
+        items = parseLegacyNews(data.news);
       }
 
-      setNewsItems(items);
-    } catch {
+      const highlights = Array.isArray(data?.signHighlights)
+        ? data.signHighlights
+        : items.filter((entry) => entry.priority);
+
+      let general = Array.isArray(data?.generalItems)
+        ? data.generalItems
+        : items.filter((entry) => !entry.priority);
+
+      if (!general.length && items.length && !highlights.length) {
+        general = items;
+      }
+
+      const extractedSummary = typeof data?.summary === 'string' ? data.summary.trim() : '';
+      const fallbackSummary = items.length
+        ? items
+            .slice(0, Math.min(items.length, 4))
+            .map((item, idx) => `${idx + 1}. ${item.title}`)
+            .join('\n')
+        : '';
+
+      setSummary(extractedSummary || fallbackSummary);
+      setMeta({
+        generatedAt: data?.generatedAt || '',
+        model: data?.model || ''
+      });
+      setHighlightItems(highlights);
+      setNewsItems(general);
+    } catch (error) {
+      console.error(error);
       addToast('Failed to load news', 'error');
     } finally {
       setLoading(false);
@@ -652,21 +714,114 @@ const NewsInterface = ({ onBack }) => {
     fetchNews();
   }, []);
 
+  const summaryPoints = summary
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
   return (
     <div className="flex flex-col h-full text-white">
-      <div className="flex items-center p-4 border-b border-white/10 bg-black/40">
-        <button
-          onClick={onBack}
-          className="p-2 hover:bg-white/10 rounded-full mr-3"
-        >
-          <Icon path={icons.arrowLeft} className="w-5 h-5" />
-        </button>
-        <div>
-          <h2 className="text-lg font-semibold tracking-wide">Latest News</h2>
-          <p className="text-xs text-white/50">Curated highlights for you</p>
+      <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/40">
+        <div className="flex items-center">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-white/10 rounded-full mr-3"
+          >
+            <Icon path={icons.arrowLeft} className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-semibold tracking-wide">Latest News</h2>
+            <p className="text-xs text-white/50">Curated highlights across world & tech</p>
+          </div>
         </div>
+        <button
+          onClick={fetchNews}
+          disabled={loading}
+          className="px-3 py-2 text-xs font-semibold rounded-lg border border-white/15 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+        >
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-6">
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {summaryPoints.length > 0 && (
+          <GlassCard className="p-5 border-white/15">
+            <div className="flex items-center gap-2 mb-3">
+              <Icon path={icons.news} className="w-5 h-5 text-purple-300" />
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-purple-200">
+                Daily Brief
+              </h3>
+            </div>
+            <ul className="space-y-2 text-sm text-white/80">
+              {summaryPoints.map((point, idx) => (
+                <li key={`${point}-${idx}`} className="flex gap-2">
+                  <span className="text-purple-300 font-semibold">{idx + 1}.</span>
+                  <span className="leading-relaxed">{point}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 text-[11px] uppercase tracking-wider text-white/40 flex flex-wrap gap-4">
+              {meta.model && <span>Model: {meta.model}</span>}
+              {meta.generatedAt && <span>Updated {formatTimestamp(meta.generatedAt)}</span>}
+            </div>
+          </GlassCard>
+        )}
+
+        {highlightItems.length > 0 && !loading && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold uppercase tracking-widest text-teal-200">
+                Sign Language Highlights
+              </h3>
+              <span className="text-[11px] text-white/40">Spotlighting ISL stories first</span>
+            </div>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {highlightItems.map((item) => (
+                <GlassCard
+                  key={item.id}
+                  className="flex flex-col overflow-hidden border-teal-400/30 bg-gradient-to-br from-emerald-900/20 to-blue-900/10"
+                >
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openArticle(item.url)}
+                    onKeyDown={(evt) => {
+                      if (evt.key === 'Enter' || evt.key === ' ') {
+                        evt.preventDefault();
+                        openArticle(item.url);
+                      }
+                    }}
+                    className="h-full flex flex-col p-5 cursor-pointer"
+                  >
+                    <div className="text-[11px] uppercase tracking-wider text-teal-200 flex items-center justify-between">
+                      <span>{item.topic || 'Sign Story'}</span>
+                      <span>{formatDate(item.publishedAt)}</span>
+                    </div>
+                    <h3 className="text-base font-semibold mt-3 mb-2 leading-tight text-emerald-100">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-white/80 flex-1 leading-relaxed line-clamp-5">
+                      {item.snippet}
+                    </p>
+                    <div className="mt-4 flex items-center justify-between text-[11px] text-emerald-200">
+                      <span className="font-semibold">{item.source}</span>
+                      {item.url && (
+                        <span className="inline-flex items-center gap-1 text-white/70">
+                          Read
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M7 17 17 7" />
+                            <path d="M8 7h9v9" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading && (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 animate-pulse">
             {[1, 2, 3].map((i) => (
@@ -674,7 +829,8 @@ const NewsInterface = ({ onBack }) => {
             ))}
           </div>
         )}
-        {!loading && newsItems.length === 0 && (
+
+        {!loading && newsItems.length === 0 && highlightItems.length === 0 && (
           <div className="text-center text-white/50">No news available at the moment.</div>
         )}
 
@@ -683,24 +839,42 @@ const NewsInterface = ({ onBack }) => {
             {newsItems.map((item) => (
               <GlassCard
                 key={item.id}
-                className="flex flex-col overflow-hidden group cursor-pointer hover:border-purple-500/50 transition-all h-full"
+                className="flex flex-col overflow-hidden group hover:border-purple-500/40 transition-all h-full"
               >
-                <div className="h-32 bg-gradient-to-br from-purple-900/40 to-blue-900/40 flex items-center justify-center">
-                  <Icon
-                    path={icons.news}
-                    className="w-10 h-10 text-white/20 group-hover:text-white/60 transition-colors"
-                  />
-                </div>
-                <div className="p-5 flex-1 flex flex-col">
-                  <h3 className="text-base font-semibold mb-2 leading-tight text-purple-100">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openArticle(item.url)}
+                  onKeyDown={(evt) => {
+                    if (evt.key === 'Enter' || evt.key === ' ') {
+                      evt.preventDefault();
+                      openArticle(item.url);
+                    }
+                  }}
+                  className="h-full flex flex-col text-left cursor-pointer focus:outline-none p-5"
+                >
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-widest text-purple-300">
+                    <span>{item.topic || 'Headline'}</span>
+                    <span>{formatDate(item.publishedAt)}</span>
+                  </div>
+                  <h3 className="text-base font-semibold mt-3 mb-2 leading-tight text-purple-100">
                     {item.title}
                   </h3>
-                  <p className="text-xs text-white/60 mb-4 flex-1 line-clamp-4">
+                  <p className="text-xs text-white/70 flex-1 leading-relaxed line-clamp-5">
                     {item.snippet}
                   </p>
-                  <span className="text-[10px] text-purple-400 font-medium uppercase tracking-wider">
-                    {item.source}
-                  </span>
+                  <div className="mt-4 flex items-center justify-between text-[11px] text-purple-200">
+                    <span className="font-semibold">{item.source}</span>
+                    {item.url && (
+                      <span className="inline-flex items-center gap-1 text-white/70">
+                        Read
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M7 17 17 7" />
+                          <path d="M8 7h9v9" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
                 </div>
               </GlassCard>
             ))}
@@ -976,6 +1150,7 @@ function AppContent() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [caption, setCaption] = useState('');
+  const [sentenceHistoryState, setSentenceHistoryState] = useState([]);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [signWords, setSignWords] = useState([]);
   const [lastSignLabel, setLastSignLabel] = useState(null);
@@ -985,6 +1160,7 @@ function AppContent() {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const detectingRef = useRef(false);
+  const pendingResetRef = useRef(false);
 
   const refreshUser = async () => {
     try {
@@ -1082,14 +1258,11 @@ function AppContent() {
   useEffect(() => {
     if (activePage !== 'camera') return;
 
-    const intervalMs = 5000;
-    const MAX_CALLS_PER_SESSION = 20;
-    let callCount = 0;
+    const intervalMs = 1500;
     let stoppedDueToQuota = false;
 
     const tick = async () => {
       if (stoppedDueToQuota) return;
-      if (callCount >= MAX_CALLS_PER_SESSION) return;
 
       if (isVideoOff) return;
       if (!localVideoRef.current || !canvasRef.current) return;
@@ -1111,23 +1284,49 @@ function AppContent() {
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         const base64 = dataUrl.split(',')[1];
 
+        const shouldReset = pendingResetRef.current;
+        const requestBody = shouldReset ? { image: base64, reset: true } : { image: base64 };
+
         const res = await apiCall('/api/ai/sign-detect', {
           method: 'POST',
-          body: { image: base64 }
+          body: requestBody,
         });
 
-        callCount += 1;
+        if (shouldReset) {
+          pendingResetRef.current = false;
+        }
 
-        const resolvedLabel =
-          (typeof res?.latestLabel === 'string' && res.latestLabel.trim()) ||
-          (typeof res?.label === 'string' && res.label.trim()) ||
-          '';
-        const resolvedConfidence =
-          typeof res?.latestConfidence === 'number'
-            ? res.latestConfidence
-            : typeof res?.confidence === 'number'
+        const resolvedSentence =
+          typeof res?.sentence === 'string' ? res.sentence.trim() : '';
+        const resolvedSentenceHistory = Array.isArray(res?.sentenceHistory)
+          ? res.sentenceHistory
+          : [];
+        const cleanedHistory = resolvedSentenceHistory
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean);
+        setSentenceHistoryState(cleanedHistory);
+        const historySentence = resolvedSentenceHistory.length
+          ? String(resolvedSentenceHistory[resolvedSentenceHistory.length - 1] || '').trim()
+          : '';
+        const bestSentence = resolvedSentence || historySentence;
+
+        const stableToken =
+          typeof res?.stableToken === 'string' ? res.stableToken.trim() : '';
+        const fallbackLatest =
+          typeof res?.latestLabel === 'string' ? res.latestLabel.trim() : '';
+        const fallbackLabel = typeof res?.label === 'string' ? res.label.trim() : '';
+        const resolvedLabel = stableToken || fallbackLatest || fallbackLabel || '';
+        const resolvedConfidence = stableToken
+          ? typeof res?.confidence === 'number'
             ? res.confidence
-            : 0;
+            : typeof res?.latestConfidence === 'number'
+            ? res.latestConfidence
+            : 0
+          : typeof res?.latestConfidence === 'number'
+          ? res.latestConfidence
+          : typeof res?.confidence === 'number'
+          ? res.confidence
+          : 0;
         const resolvedRaw =
           (typeof res?.latestRaw === 'string' && res.latestRaw.trim()) ||
           (typeof res?.raw === 'string' && res.raw.trim()) ||
@@ -1144,20 +1343,29 @@ function AppContent() {
           }
 
           const MIN_GAP_MS = 1500;
-          if (resolvedLabel === lastSignLabel && now - lastSignTime < MIN_GAP_MS) {
+          const normalizedLabel = resolvedLabel.toLowerCase();
+          if (normalizedLabel === lastSignLabel && now - lastSignTime < MIN_GAP_MS) {
             return;
           }
 
-          setLastSignLabel(resolvedLabel);
+          setLastSignLabel(normalizedLabel);
           setLastSignTime(now);
 
           setSignWords((prev) => {
             if (prev[prev.length - 1] === resolvedLabel) return prev;
             const next = [...prev, resolvedLabel];
-            const sentence = next.join(' ');
-            setCaption(sentence);
+            if (!bestSentence) {
+              const sentence = next.join(' ');
+              setCaption(sentence);
+            }
             return next;
           });
+
+          if (bestSentence) {
+            setCaption(bestSentence);
+          }
+        } else if (bestSentence) {
+          setCaption(bestSentence);
         } else if (resolvedRaw) {
           if (!signWords.length) {
             setCaption(resolvedRaw);
@@ -1200,7 +1408,14 @@ function AppContent() {
     setSignWords([]);
     setLastSignLabel(null);
     setCaption('Listening for conversation...');
+    setSentenceHistoryState([]);
+    pendingResetRef.current = true;
   };
+
+  const transcriptText = sentenceHistoryState.length
+    ? sentenceHistoryState.join('\n')
+    : caption || 'Listening for conversation...';
+  const transcriptActive = sentenceHistoryState.length > 0 || signWords.length > 0;
 
   return (
     <div className="relative w-full h-screen bg-[#040307] text-white overflow-hidden font-sans">
@@ -1264,7 +1479,7 @@ function AppContent() {
                       animate={{ y: 0, opacity: 1 }}
                       className="inline-block max-w-2xl bg-black/70 backdrop-blur-md border border-white/10 px-6 py-4 rounded-3xl shadow-xl"
                     >
-                      {signWords.length > 0 && (
+                      {transcriptActive && (
                         <div className="flex items-center justify-between mb-1 text-[11px] text-white/60">
                           <span>Live sign transcript</span>
                           <button
@@ -1275,8 +1490,8 @@ function AppContent() {
                           </button>
                         </div>
                       )}
-                      <p className="text-lg sm:text-xl font-medium text-white/90">
-                        {caption || 'Listening for conversation...'}
+                      <p className="text-lg sm:text-xl font-medium text-white/90 whitespace-pre-line">
+                        {transcriptText}
                       </p>
                     </motion.div>
                   </div>

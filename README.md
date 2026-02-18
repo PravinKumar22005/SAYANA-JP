@@ -37,3 +37,4 @@ Notes:
 
 - AI endpoints require `GOOGLE_API_KEY` or will error; for local dev you can mock responses.
 - This project has a seed script that inserts a sample user.
+- News + chatbot endpoints can now run fully on the free Hugging Face Inference API. Set `HF_API_KEY`, `HF_CHAT_MODEL`, and `HF_NEWS_MODEL` inside `sayana-backend/.env` to enable the new flow (defaults use the open `mistralai/Mistral-7B-Instruct-v0.3` model). If you omit the key, the endpoints fall back to basic placeholders. You can also tune `NEWS_SIGN_LIMIT` to control how many sign-language stories appear at the top of the News tab.

@@ -1,18 +1,17 @@
 // controllers/signController.js
 // Holistic video pipeline with open-vocabulary gesture tokens + Gemini sentence rewrites.
 
-const path = require('path');
-const { spawn } = require('child_process');
 const axios = require('axios');
 
 const { hasGeminiKeys, generateWithRetry } = require('../services/geminiClient');
+const { getHolisticLandmarks } = require('../services/holisticWorker');
 
-const PREDICTION_WINDOW = 7;
-const MOTION_WINDOW = 5;
-const MIN_CONSISTENT_COUNT = 3;
-const MIN_STABLE_CONFIDENCE = 0.7;
-const MIN_BUCKET_CONFIDENCE = 0.4;
-const TOKEN_REUSE_COOLDOWN_MS = 1500;
+const PREDICTION_WINDOW = Number(process.env.PREDICTION_WINDOW || 7);
+const MOTION_WINDOW = Number(process.env.MOTION_WINDOW || 5);
+const MIN_CONSISTENT_COUNT = Number(process.env.STABLE_MIN_COUNT || 3);
+const MIN_STABLE_CONFIDENCE = Number(process.env.STABLE_MIN_CONFIDENCE || 0.7);
+const MIN_BUCKET_CONFIDENCE = Number(process.env.STABLE_MIN_BUCKET_CONFIDENCE || 0.4);
+const TOKEN_REUSE_COOLDOWN_MS = Number(process.env.STABLE_TOKEN_COOLDOWN_MS || 1500);
 const MAX_LEVENSHTEIN_FOR_MATCH = 1;
 
 const HF_MODEL_IDS = (process.env.HF_SIGN_MODEL_ID || 'microsoft/Phi-3.5-vision-instruct,Qwen/Qwen2.5-VL-7B-Instruct')
@@ -20,14 +19,15 @@ const HF_MODEL_IDS = (process.env.HF_SIGN_MODEL_ID || 'microsoft/Phi-3.5-vision-
   .map((id) => id.trim())
   .filter(Boolean);
 
-const HOLISTIC_SCRIPT_PATH = path.join(__dirname, '..', 'python', 'holistic_bridge.py');
-const HOLISTIC_TIMEOUT_MS = Number(process.env.HOLISTIC_TIMEOUT_MS || 15000);
-const PYTHON_BIN = process.env.SIGN_PYTHON_BIN || process.env.PYTHON_BIN || 'python';
-
 const SENTENCE_GAP_MS = Number(process.env.SENTENCE_GAP_MS || 2500);
 const SENTENCE_MAX_TOKENS = Number(process.env.SENTENCE_MAX_TOKENS || 12);
 const SENTENCE_HISTORY_LIMIT = 5;
+const SENTENCE_FORCE_INTERVAL_MS = Number(process.env.SENTENCE_FORCE_INTERVAL_MS || 4000);
 const GEMINI_SENTENCE_MODEL = process.env.GEMINI_SENTENCE_MODEL || process.env.GEMINI_SIGN_MODEL || '';
+const CLASSIFIER_MIN_INTERVAL_MS = Number(process.env.CLASSIFIER_MIN_INTERVAL_MS || 450);
+const CLASSIFIER_FORCE_SPEED = Number(process.env.CLASSIFIER_FORCE_SPEED || 0.03);
+const CLASSIFIER_FORCE_DELTA = Number(process.env.CLASSIFIER_FORCE_DELTA || 0.04);
+const MOTION_GUARD_MIN_SPEED = Number(process.env.MOTION_GUARD_MIN_SPEED || 0.015);
 
 const UNKNOWN_LABELS = new Set(['', 'unknown', 'none', 'null', 'n/a', 'no sign detected']);
 const LABEL_SYNONYMS = {
@@ -56,17 +56,26 @@ let lastStableTimestamp = 0;
 const sentenceState = {
   tokens: [],
   lastTokenAt: 0,
+  pendingSince: 0,
   lastSentence: '',
   history: [],
   dirty: false,
   rewriteInFlight: null,
 };
+let sentenceVersion = 0;
+let lastClassifierTimestamp = 0;
+let lastClassifierResult = null;
+let lastFeatureSnapshot = null;
 
 // ----------------- ROUTE -----------------
 
 const detectSign = async (req, res) => {
   try {
-    const { image, debugLandmarks, debugToken } = req.body || {};
+    const { image, debugLandmarks, debugToken, reset } = req.body || {};
+
+    if (reset) {
+      resetPipelineState({ clearHistory: true });
+    }
 
     if (!image) {
       return res.status(400).json({ message: 'image (base64) is required' });
@@ -90,12 +99,31 @@ const detectSign = async (req, res) => {
 
     const motionState = updateMotionHistory(featureSummary);
 
-    const classification = await classifyGestureToken({
-      featureSummary,
-      motionState,
-      imageBuffer,
-      debugToken,
-    });
+    const now = Date.now();
+    const forceSpeed = motionState?.speed && motionState.speed >= CLASSIFIER_FORCE_SPEED;
+    const forceDelta = hasSignificantFeatureShift(featureSummary, lastFeatureSnapshot);
+    const elapsed = now - lastClassifierTimestamp;
+
+    let classification;
+    if (
+      !lastClassifierResult ||
+      forceSpeed ||
+      forceDelta ||
+      elapsed >= CLASSIFIER_MIN_INTERVAL_MS ||
+      debugToken
+    ) {
+      classification = await classifyGestureToken({
+        featureSummary,
+        motionState,
+        imageBuffer,
+        debugToken,
+      });
+      lastClassifierResult = classification;
+      lastClassifierTimestamp = now;
+    } else {
+      classification = { ...lastClassifierResult, reused: true };
+    }
+    lastFeatureSnapshot = captureFeatureSnapshot(featureSummary);
 
     recordPrediction({ ...classification, motionState, timestamp: Date.now() });
 
@@ -121,41 +149,11 @@ async function extractHolisticLandmarks(imageBuffer, override) {
   if (!imageBuffer?.length) return null;
 
   try {
-    const base64 = imageBuffer.toString('base64');
-    return await runHolisticBridge(base64);
+    return await getHolisticLandmarks(imageBuffer);
   } catch (err) {
     console.error('Holistic extractor error:', err.message || err);
     return null;
   }
-}
-
-function runHolisticBridge(imageBase64) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_BIN, [HOLISTIC_SCRIPT_PATH], { stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error('Holistic extractor timed out'));
-    }, HOLISTIC_TIMEOUT_MS);
-
-    child.stdout.on('data', (chunk) => (stdout += chunk.toString()));
-    child.stderr.on('data', (chunk) => (stderr += chunk.toString()));
-
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(stderr || `Holistic exited ${code}`));
-      try {
-        resolve(JSON.parse(stdout || '{}'));
-      } catch (e) {
-        reject(new Error(`Failed to parse holistic output: ${e.message}`));
-      }
-    });
-
-    child.stdin.write(JSON.stringify({ image_base64: imageBase64 }));
-    child.stdin.end();
-  });
 }
 
 // ----------------- FEATURE EXTRACTION -----------------
@@ -489,6 +487,25 @@ function buildClassifierPrompt(featureSummary = {}) {
   return lines.join('\n');
 }
 
+function captureFeatureSnapshot(featureSummary) {
+  if (!featureSummary) return null;
+  const clone = (point) => (point ? { x: point.x, y: point.y, z: point.z } : null);
+  return {
+    leftCenter: clone(featureSummary.left?.center),
+    rightCenter: clone(featureSummary.right?.center),
+    timestamp: Date.now(),
+  };
+}
+
+function hasSignificantFeatureShift(currentSummary, previousSnapshot) {
+  if (!currentSummary) return true;
+  if (!previousSnapshot) return true;
+  const leftDist = distance(currentSummary.left?.center, previousSnapshot.leftCenter);
+  const rightDist = distance(currentSummary.right?.center, previousSnapshot.rightCenter);
+  const delta = Math.max(leftDist || 0, rightDist || 0);
+  return delta >= CLASSIFIER_FORCE_DELTA;
+}
+
 // ----------------- STABILITY + SENTENCE -----------------
 
 function recordPrediction(prediction) {
@@ -504,8 +521,14 @@ function evaluateStableToken() {
   const buckets = [];
 
   recent.forEach((entry) => {
-    if (!entry.motionState?.consistent) return;
     if (!entry.label || !entry.normalizedLabel) return;
+
+    const motion = entry.motionState;
+    const requiresConsistency = motion && motion.speed >= MOTION_GUARD_MIN_SPEED;
+    if (requiresConsistency && motion.consistent === false) {
+      return;
+    }
+
     if ((entry.confidence || 0) < MIN_BUCKET_CONFIDENCE) return;
 
     let bucket = buckets.find((b) => areTokensEquivalent(b.normalizedLabel, entry.normalizedLabel));
@@ -583,6 +606,9 @@ async function prepareResponse(stableResult) {
   if (payload.stableToken) {
     sentenceState.tokens.push(payload.stableToken);
     sentenceState.lastTokenAt = now;
+    if (!sentenceState.pendingSince) {
+      sentenceState.pendingSince = now;
+    }
     sentenceState.dirty = true;
   }
 
@@ -608,8 +634,10 @@ async function maybeRewriteSentence(now) {
 
   const gapExceeded = sentenceState.lastTokenAt && now - sentenceState.lastTokenAt >= SENTENCE_GAP_MS;
   const overflow = sentenceState.tokens.length >= SENTENCE_MAX_TOKENS;
+  const pendingDuration = sentenceState.pendingSince ? now - sentenceState.pendingSince : 0;
+  const forceTimeout = SENTENCE_FORCE_INTERVAL_MS > 0 && sentenceState.pendingSince && pendingDuration >= SENTENCE_FORCE_INTERVAL_MS;
 
-  if (!gapExceeded && !overflow) return false;
+  if (!gapExceeded && !overflow && !forceTimeout) return false;
 
   await ensureSentenceRewrite();
   return true;
@@ -618,6 +646,7 @@ async function maybeRewriteSentence(now) {
 async function ensureSentenceRewrite() {
   if (sentenceState.rewriteInFlight) return sentenceState.rewriteInFlight;
 
+  const versionAtStart = sentenceVersion;
   sentenceState.rewriteInFlight = (async () => {
     const gloss = sentenceState.tokens.join(' ');
     let sentence = gloss;
@@ -633,11 +662,16 @@ async function ensureSentenceRewrite() {
       }
     }
 
+    if (versionAtStart !== sentenceVersion) {
+      return;
+    }
+
     sentenceState.lastSentence = sentence;
     sentenceState.history.push(sentence);
     if (sentenceState.history.length > SENTENCE_HISTORY_LIMIT) sentenceState.history.shift();
     sentenceState.tokens = [];
     sentenceState.dirty = false;
+    sentenceState.pendingSince = 0;
   })();
 
   try {
@@ -789,17 +823,24 @@ function updateMotionHistory(featureSummary) {
 }
 
 function analyzeMotionState() {
-  if (motionHistory.length < 2) return { consistent: false, speed: 0, approach: false, separation: false, synchrony: false };
+  if (motionHistory.length < 2) {
+    return { consistent: true, speed: 0, approach: false, separation: false, synchrony: true };
+  }
 
   const deltas = [];
   const leftDirections = [];
   const rightDirections = [];
   const handDistanceTrend = { start: null, end: null };
+  let leftSamples = 0;
+  let rightSamples = 0;
 
   for (let i = 1; i < motionHistory.length; i += 1) {
     const prev = motionHistory[i - 1];
     const curr = motionHistory[i];
     const dt = Math.max(1, curr.timestamp - prev.timestamp);
+
+    if (prev.leftCenter && curr.leftCenter) leftSamples += 1;
+    if (prev.rightCenter && curr.rightCenter) rightSamples += 1;
 
     const leftSpeed = speedBetween(prev.leftCenter, curr.leftCenter, dt);
     const rightSpeed = speedBetween(prev.rightCenter, curr.rightCenter, dt);
@@ -816,15 +857,30 @@ function analyzeMotionState() {
 
   const avgLeftSpeed = average(deltas.map((d) => d.leftSpeed));
   const avgRightSpeed = average(deltas.map((d) => d.rightSpeed));
-  const synchrony = Math.abs(avgLeftSpeed - avgRightSpeed) <= 0.05;
 
-  const directionConsistency = Math.max(measureDirectionConsistency(leftDirections), measureDirectionConsistency(rightDirections));
+  const requireSynchrony = leftSamples > 1 && rightSamples > 1;
+  const synchrony = !requireSynchrony || Math.abs(avgLeftSpeed - avgRightSpeed) <= 0.05;
+
+  const leftConsistency = measureDirectionConsistency(leftDirections);
+  const rightConsistency = measureDirectionConsistency(rightDirections);
+  const directionConsistency = Math.max(leftConsistency, rightConsistency);
+  const hasDirectionSamples = leftDirections.length >= 2 || rightDirections.length >= 2;
+  const directionStable = !hasDirectionSamples || directionConsistency <= 0.6;
 
   const distanceDelta = handDistanceTrend.start != null && handDistanceTrend.end != null ? handDistanceTrend.end - handDistanceTrend.start : 0;
 
-  const consistent = (directionConsistency <= 0.6 || leftDirections.length < 2 || rightDirections.length < 2) && synchrony;
+  const speedComponents = [];
+  if (leftSamples) speedComponents.push(avgLeftSpeed);
+  if (rightSamples) speedComponents.push(avgRightSpeed);
+  const blendedSpeed = speedComponents.length ? average(speedComponents) : average(deltas.map((d) => (d.leftSpeed + d.rightSpeed) / 2));
 
-  return { consistent, speed: (avgLeftSpeed + avgRightSpeed) / 2 || 0, approach: distanceDelta < -0.02, separation: distanceDelta > 0.02, synchrony };
+  return {
+    consistent: directionStable && synchrony,
+    speed: blendedSpeed || 0,
+    approach: distanceDelta < -0.02,
+    separation: distanceDelta > 0.02,
+    synchrony,
+  };
 }
 
 function normalizeTokenLabel(label) {
@@ -887,6 +943,31 @@ function formatVector(vector) {
 function resetMotionState() {
   motionHistory.length = 0;
   predictionHistory.length = 0;
+}
+
+function resetSentenceState({ clearHistory = false } = {}) {
+  sentenceVersion += 1;
+  sentenceState.tokens = [];
+  sentenceState.lastTokenAt = 0;
+  sentenceState.pendingSince = 0;
+  sentenceState.dirty = false;
+  sentenceState.rewriteInFlight = null;
+  if (clearHistory) {
+    sentenceState.lastSentence = '';
+    sentenceState.history = [];
+  }
+}
+
+function resetPipelineState({ clearHistory = false } = {}) {
+  resetMotionState();
+  lastFeatureSnapshot = null;
+  lastClassifierResult = null;
+  lastClassifierTimestamp = 0;
+  lastStableToken = null;
+  lastStableTimestamp = 0;
+  if (clearHistory) {
+    resetSentenceState({ clearHistory: true });
+  }
 }
 
 module.exports = { detectSign };

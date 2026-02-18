@@ -1,40 +1,27 @@
 // controllers/aiController.js
 const { hasGeminiKeys, generateWithRetry } = require('../services/geminiClient');
+const {
+  hasHuggingFaceKey,
+  generateChatCompletion
+} = require('../services/huggingfaceClient');
+const { buildNewsDigest } = require('../services/newsAgentService');
 
 /**
  * GET /api/ai/news
  * Returns AI-generated news summary, or a dev fallback if keys are missing.
  */
 exports.getNews = async (req, res) => {
-  if (!hasGeminiKeys) {
-    // Dev-mode fallback so UI still works
-    return res.json({
-      news:
-        `1. Dev mode: Gemini API keys are not configured on backend.\n` +
-        `2. Add GEMINI_API_KEYS or GOOGLE_API_KEY in sayana-backend/.env.\n` +
-        `3. This is a mock news response so your UI keeps working.`
-    });
-  }
-
   try {
-    const prompt = `
-You are an assistant summarizing news for a sign-language communication app called SAYANA.
-
-Provide the TOP 5 latest headlines in technology and world events.
-Format them as a numbered list like:
-
-1. Headline one - short description
-2. Headline two - short description
-3. ...
-
-Keep it concise, neutral, and easy to read.
-    `.trim();
-
-    const text = await generateWithRetry(prompt);
-    res.json({ news: text });
+    const digest = await buildNewsDigest();
+    res.json(digest);
   } catch (error) {
     console.error('[AI] getNews error:', error);
-    res.status(500).json({ message: 'Failed to fetch news from AI' });
+    res.json({
+      summary: 'News feed is temporarily unavailable. Please try refreshing shortly.',
+      items: [],
+      model: null,
+      generatedAt: new Date().toISOString()
+    });
   }
 };
 
@@ -51,51 +38,61 @@ exports.getChatbotResponse = async (req, res) => {
       return res.status(400).json({ message: 'Message is required.' });
     }
 
-    // If no keys, dev fallback: echo behavior so frontend doesn't break
-    if (!hasGeminiKeys) {
-      return res.json({
-        reply:
-          `Dev mode reply (no Gemini API keys configured on backend).\n\n` +
-          `You said: "${message}"`
-      });
+    let replyText = null;
+    let provider = null;
+
+    if (hasHuggingFaceKey) {
+      try {
+        const systemPrompt = `
+You are "Sayana Bot", the assistant inside SAYANA – a communication hub for deaf and mute users.
+Keep responses compact (3–6 short lines), vary your greetings, and whenever you explain a sign, describe it using Indian Sign Language cues (handshape, location, motion, and facial expression).
+Offer one actionable tip or follow-up question when it helps the user move forward.
+        `.trim();
+
+        const { text, model } = await generateChatCompletion([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message.trim() }
+        ], {
+          temperature: 0.35,
+          maxNewTokens: 360
+        });
+
+        replyText = text;
+        provider = model;
+      } catch (hfError) {
+        console.warn('[AI] Hugging Face chatbot call failed, falling back to Gemini:', hfError.message);
+      }
     }
 
-    const prompt = `
+    if (!replyText && hasGeminiKeys) {
+      const enhancedPrompt = `
 You are "Sayana Bot", the assistant of SAYANA – an app that helps deaf and mute users communicate better (sign language detection, messaging, etc.).
 
 User said:
 "${message}"
 
-Your task:
-- Reply in a friendly, simple tone.
-- Answer in 3–6 lines maximum.
-- If they ask about the app itself, briefly explain that SAYANA supports sign-language based communication, chats, and an AI helper.
-- Avoid very long paragraphs.
-    `.trim();
+Guidelines for the reply:
+- Be friendly and simple in tone.
+- Vary your phrasing across responses; avoid repeating the same template or opener.
+- Answer concisely (roughly 3–6 short lines), but when teaching, include one brief actionable step or a micro-exercise.
+- When describing or teaching signs, always use Indian Sign Language (ISL) conventions — give clear, step-by-step ISL instructions (handshape, movement, location) and note any cultural tips.
+- Ask one short follow-up question when it helps clarify the user's intent (for example: "Do you want a written description or a short video example?").
+- If the user asks about the app, briefly state core features and offer one actionable next-step (e.g., "Try the Sign Language mode in the app's Learn tab").
+- Do not always start with the exact same greeting; use varied openings.
 
-    // Improved prompt guidance: encourage varied phrasing, short follow-ups, and actionable suggestions
-    const enhancedPrompt = `
-  You are "Sayana Bot", the assistant of SAYANA – an app that helps deaf and mute users communicate better (sign language detection, messaging, etc.).
+Reply now following these guidelines (use ISL for any sign examples):
+"""
+      `.trim();
 
-  User said:
-  "${message}"
+      replyText = await generateWithRetry(enhancedPrompt);
+      provider = 'gemini';
+    }
 
-    Guidelines for the reply:
-  - Be friendly and simple in tone.
-  - Vary your phrasing across responses; avoid repeating the same template or opener.
-  - Answer concisely (roughly 3–6 short lines), but when teaching, include one brief actionable step or a micro-exercise.
-  - When describing or teaching signs, always use Indian Sign Language (ISL) conventions — give clear, step-by-step ISL instructions (handshape, movement, location) and note any cultural tips.
-  - Ask one short follow-up question when it helps clarify the user's intent (for example: "Do you want a written description or a short video example?").
-  - If the user asks about the app, briefly state core features and offer one actionable next-step (e.g., "Try the Sign Language mode in the app's Learn tab").
-  - Do not always start with the exact same greeting; use varied openings.
+    if (!replyText) {
+      replyText = `Dev mode reply (no AI provider configured).\n\nYou said: "${message}"`;
+    }
 
-  Reply now following these guidelines (use ISL for any sign examples):
-  """
-  `.trim();
-
-    const text = await generateWithRetry(enhancedPrompt);
-
-    res.json({ reply: text });
+    res.json({ reply: replyText, provider });
   } catch (error) {
     console.error('[AI] getChatbotResponse error:', error);
     res.status(500).json({

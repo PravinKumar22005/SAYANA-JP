@@ -119,8 +119,27 @@ def _build_face_summary(results: Any) -> Dict[str, Optional[Dict[str, float]]]:
     }
 
 
-def _process(image_base64: str) -> Dict[str, Any]:
+_HOLISTIC_INSTANCE: Optional["mp.solutions.holistic.Holistic"] = None
+
+
+def _get_holistic() -> Optional["mp.solutions.holistic.Holistic"]:
+    global _HOLISTIC_INSTANCE  # pylint: disable=global-statement
     if mp_holistic is None:
+        return None
+    if _HOLISTIC_INSTANCE is None:
+        _HOLISTIC_INSTANCE = mp_holistic.Holistic(
+            static_image_mode=True,
+            model_complexity=int(os.environ.get("SIGN_HOLISTIC_COMPLEXITY", 1)),
+            refine_face_landmarks=True,
+            enable_segmentation=False,
+            smooth_landmarks=True,
+        )
+    return _HOLISTIC_INSTANCE
+
+
+def _process(image_base64: str) -> Dict[str, Any]:
+    holistic = _get_holistic()
+    if holistic is None:
         return {
             "leftHand": [],
             "rightHand": [],
@@ -133,14 +152,7 @@ def _process(image_base64: str) -> Dict[str, Any]:
     # These members DO exist at runtime; pylint is wrong due to bad cv2 stubs
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)  # pylint: disable=no-member
 
-    with mp_holistic.Holistic(
-        static_image_mode=True,
-        model_complexity=int(os.environ.get("SIGN_HOLISTIC_COMPLEXITY", 1)),
-        refine_face_landmarks=True,
-        enable_segmentation=False,
-        smooth_landmarks=True,
-    ) as holistic:
-        results = holistic.process(image_rgb)
+    results = holistic.process(image_rgb)
 
     return {
         "leftHand": _landmark_list_to_points(results.left_hand_landmarks),
@@ -148,6 +160,27 @@ def _process(image_base64: str) -> Dict[str, Any]:
         "pose": _build_pose_summary(results),
         "face": _build_face_summary(results),
     }
+
+
+def _serve_forever() -> None:
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+            image_base64 = payload.get("image_base64")
+            if not image_base64:
+                raise ValueError("image_base64 is required")
+            output = _process(image_base64)
+            sys.stdout.write(json.dumps(output, separators=(",", ":")) + "\n")
+            sys.stdout.flush()
+        except Exception as exc:  # pylint: disable=broad-except
+            sys.stdout.write(json.dumps({"error": str(exc)}) + "\n")
+            sys.stdout.flush()
 
 
 def main() -> None:
@@ -166,7 +199,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
-    except Exception as exc:
+        if os.environ.get("HOLISTIC_SERVER") == "1":
+            _serve_forever()
+        else:
+            main()
+    except Exception as exc:  # pylint: disable=broad-except
         sys.stderr.write(f"{exc}\n")
         sys.exit(1)
