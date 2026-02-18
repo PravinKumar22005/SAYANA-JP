@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import SignTranslatorPanel from '../components/SignTranslatorPanel';
 
 const ToastContext = createContext();
 const ToastProvider = ({ children }) => {
@@ -1146,7 +1147,7 @@ const SettingsInterface = ({ onBack, currentUser, refreshUser }) => {
 
 function AppContent() {
   const { addToast } = useToast();
-  const [activePage, setActivePage] = useState('camera'); // 'camera' | 'chat' | 'news' | 'chatbot' | 'settings'
+  const [activePage, setActivePage] = useState('translator'); // 'translator' | 'camera' | 'chat' | 'news' | 'chatbot' | 'settings'
   const [currentUser, setCurrentUser] = useState(null);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [caption, setCaption] = useState('');
@@ -1439,6 +1440,18 @@ function AppContent() {
 
           <main className="w-full h-full relative pt-12">
             <AnimatePresence mode="wait">
+              {activePage === 'translator' && (
+                <motion.div
+                  key="translator"
+                  className="w-full h-full overflow-y-auto px-4 sm:px-8 py-8"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <SignTranslatorPanel apiBase={API_BASE} />
+                </motion.div>
+              )}
               {/* Sign Studio */}
               {activePage === 'camera' && (
                 <motion.div
@@ -1587,6 +1600,7 @@ function AppContent() {
         {/* Sidebar Nav */}
         <div className="absolute right-6 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-5">
           {[
+            { id: 'translator', icon: icons.mic, label: 'Voice to Sign' },
             { id: 'camera', icon: icons.video, label: 'Sign Studio' },
             { id: 'chat', icon: icons.chat, label: 'Messages' },
             { id: 'news', icon: icons.news, label: 'News Feed' },

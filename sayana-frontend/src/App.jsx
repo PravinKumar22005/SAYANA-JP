@@ -10,7 +10,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { AfterimagePass } from "three/addons/postprocessing/AfterimagePass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { motion, AnimatePresence } from 'framer-motion';
-import { ToastContainer, toast } from 'react-toastify';
+import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // --- Global Styles Component (from Morphing Background) ---
@@ -964,6 +964,19 @@ const fetchWithBackoff = async (url, options, retries = 5, delay = 1000) => {
     await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i) + jitter));
   }
 };
+
+const resolveApiBase = (candidate) => {
+  const fallback = typeof window !== 'undefined' && window.location
+    ? window.location.origin
+    : 'http://localhost:5000';
+  const trimmed = (candidate || '').trim();
+  if (!trimmed) return fallback;
+  if (!/^https?:\/\//i.test(trimmed)) return fallback;
+  const normalized = trimmed.replace(/[/\\]+$/g, '').trim();
+  return normalized || fallback;
+};
+
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE || '');
 
 
 // --- Data for Features and Animations ---
@@ -2652,18 +2665,6 @@ const Chatbot = () => {
       const systemPrompt = "You are 'Sayan,' the friendly and helpful chatbot for SAYANA. SAYANA is an application that empowers deaf and mute users through AI-powered emotion detection, real-time sign language translation, secure conversations, and multilingual support. Your *only* job is to answer questions about SAYANA's features, accessibility, technology, and mission. Be empathetic, clear, and concise. **Strictly refuse to answer any questions or engage in any conversation that is not about SAYANA.** If asked about anything else, politely redirect the user back to SAYANA's features. For example: 'I'm here to help with any questions you have about SAYANA. How can I tell you more about our AI translation features?'";
 
       const userQuery = input;
-      const rawBase = import.meta.env.VITE_API_BASE || '';
-      const resolveApiBase = (candidate) => {
-        const v = (candidate || '').trim();
-        if (!v) return window?.location?.origin || 'http://localhost:5000';
-        // If candidate is just a protocol (e.g. "http://"), treat as invalid
-        const withoutProto = v.replace(/^https?:\/\//i, '');
-        if (!withoutProto) return window?.location?.origin || 'http://localhost:5000';
-        // Ensure it starts with http(s)
-        if (!/^https?:\/\//i.test(v)) return window?.location?.origin || 'http://localhost:5000';
-        return v.replace(/\/+$/, '');
-      };
-      const API_BASE = resolveApiBase(rawBase);
       const token = localStorage.getItem('token');
       const endpoint = token ? `${API_BASE}/api/agent/query` : `${API_BASE}/api/agent/query/public`;
 
@@ -2977,6 +2978,7 @@ export default function App() {
     <React.Fragment>
       <GlobalStyles />
       <MorphingBackground />
+      <ToastContainer position="bottom-right" theme="dark" newestOnTop closeOnClick pauseOnFocusLoss={false} />
       <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route path="/our" element={<OurApp />} />

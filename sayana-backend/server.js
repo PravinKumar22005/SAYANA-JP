@@ -17,6 +17,7 @@ const friendRoutes = require('./routes/friendRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const signRoutes = require('./routes/signRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 // fail fast if critical env missing
@@ -54,6 +55,7 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/sign', signRoutes);
 
 app.get('/', (req, res) => res.send('Sayana API up'));
 
