@@ -13,3 +13,12 @@ yarn-error.log*
 # Build folders
 dist/
 build/
+
+# Python virtual environments & artifacts
+venv/
+*.py[cod]
+__pycache__/
+*.pyo
+
+# Nested environment files
+**/.env
