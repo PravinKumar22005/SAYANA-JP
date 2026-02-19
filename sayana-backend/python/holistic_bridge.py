@@ -1,29 +1,51 @@
 #!/usr/bin/env python3
 """Extract MediaPipe Holistic landmarks for the Node sign-controller bridge."""
 
+from __future__ import annotations
+
 import base64
+import importlib
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2  # pylint: disable=no-member
 import numpy as np
 
-try:
+_MISSING_DEP_MSG = (
+    "MediaPipe Holistic is unavailable. Install dependencies via `pip install -r python/requirements.txt` "
+    "and ensure SIGN_PYTHON_BIN points to that interpreter."
+)
+
+
+def _load_mediapipe_modules() -> Tuple[Optional[Any], Optional[Any]]:
     if os.name == "nt" and os.environ.get("SIGN_DISABLE_XNNPACK", "1") == "1":
         # XNNPACK frequently crashes on some Windows CPUs; prefer pure CPU path.
         os.environ.setdefault("DISABLE_XNNPACK", "1")
-    import mediapipe as mp
-except ImportError:
-    mp = None
 
-if mp is not None:
-    mp_holistic = mp.solutions.holistic
-    POSE = mp_holistic.PoseLandmark
-else:
-    mp_holistic = None
-    POSE = None
+    module_bases = (
+        "mediapipe.python.solutions",
+        "mediapipe.solutions",
+    )
+
+    for base in module_bases:
+        try:
+            holistic_mod = importlib.import_module(f"{base}.holistic")
+            pose_mod = importlib.import_module(f"{base}.pose")
+            return holistic_mod, pose_mod
+        except ModuleNotFoundError:
+            continue
+        except ImportError:
+            continue
+
+    return None, None
+
+
+mp_holistic, mp_pose = _load_mediapipe_modules()
+POSE = getattr(mp_pose, "PoseLandmark", None) if mp_pose else None
+if mp_holistic is None or mp_pose is None:
+    sys.stderr.write(_MISSING_DEP_MSG + "\n")
 
 FACE_NOSE = 1
 FACE_MOUTH_LEFT = 61
@@ -119,13 +141,13 @@ def _build_face_summary(results: Any) -> Dict[str, Optional[Dict[str, float]]]:
     }
 
 
-_HOLISTIC_INSTANCE: Optional["mp.solutions.holistic.Holistic"] = None
+_HOLISTIC_INSTANCE: Optional[Any] = None
 
 
-def _get_holistic() -> Optional["mp.solutions.holistic.Holistic"]:
+def _get_holistic() -> Optional[Any]:
     global _HOLISTIC_INSTANCE  # pylint: disable=global-statement
-    if mp_holistic is None:
-        return None
+    if mp_holistic is None or mp_pose is None:
+        raise RuntimeError(_MISSING_DEP_MSG)
     if _HOLISTIC_INSTANCE is None:
         _HOLISTIC_INSTANCE = mp_holistic.Holistic(
             static_image_mode=True,
@@ -139,13 +161,6 @@ def _get_holistic() -> Optional["mp.solutions.holistic.Holistic"]:
 
 def _process(image_base64: str) -> Dict[str, Any]:
     holistic = _get_holistic()
-    if holistic is None:
-        return {
-            "leftHand": [],
-            "rightHand": [],
-            "pose": {},
-            "face": {},
-        }
 
     image_bgr = _decode_image(image_base64)
 

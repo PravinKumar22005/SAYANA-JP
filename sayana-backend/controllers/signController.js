@@ -67,6 +67,24 @@ let lastClassifierTimestamp = 0;
 let lastClassifierResult = null;
 let lastFeatureSnapshot = null;
 
+function createHolisticDependencyError(details) {
+  const error = new Error(
+    details || 'Holistic landmark extractor is unavailable. Install MediaPipe/ OpenCV via python/requirements.txt and update SIGN_PYTHON_BIN.'
+  );
+  error.status = 503;
+  error.code = 'HOLISTIC_DEPENDENCY_MISSING';
+  return error;
+}
+
+function isHolisticDependencyError(err) {
+  const message = (err?.message || '').toLowerCase();
+  return (
+    err?.code === 'HOLISTIC_DEPENDENCY_MISSING' ||
+    message.includes('mediapipe holistic is unavailable') ||
+    message.includes('holistic worker unavailable')
+  );
+}
+
 // ----------------- ROUTE -----------------
 
 const detectSign = async (req, res) => {
@@ -138,7 +156,9 @@ const detectSign = async (req, res) => {
     return res.status(200).json(response);
   } catch (err) {
     console.error('signController error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
+    const status = Number.isInteger(err?.status) ? err.status : 500;
+    const expose = status !== 500;
+    return res.status(status).json({ message: expose ? err.message : 'Internal server error' });
   }
 };
 
@@ -151,7 +171,14 @@ async function extractHolisticLandmarks(imageBuffer, override) {
   try {
     return await getHolisticLandmarks(imageBuffer);
   } catch (err) {
-    console.error('Holistic extractor error:', err.message || err);
+    const message = err?.message || '';
+    if (isHolisticDependencyError(err)) {
+      throw createHolisticDependencyError(message);
+    }
+    if (/mediapipe|opencv|holistic/gi.test(message)) {
+      throw createHolisticDependencyError(message);
+    }
+    console.error('Holistic extractor error:', message || err);
     return null;
   }
 }
